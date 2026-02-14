@@ -17,6 +17,8 @@ st.title("Security Quick Check")
 st.write("Analisi basata esclusivamente su informazioni pubbliche (HTTP / DNS / SSL). Nessun test intrusivo.")
 st.caption("Nota: questo strumento fornisce una verifica preliminare e non sostituisce un assessment professionale completo.")
 
+UA = {"User-Agent": "SecurityQuickCheck/1.0"}
+
 # ------------------------------------------------
 # HELPERS (PUBLIC / SAFE)
 # ------------------------------------------------
@@ -57,7 +59,7 @@ def fetch_headers(host: str):
         f"https://{host}",
         timeout=8,
         allow_redirects=True,
-        headers={"User-Agent": "SecurityQuickCheck/1.0"},
+        headers=UA,
     )
     return r.url, r.status_code, r.headers
 
@@ -109,6 +111,104 @@ def tcp_connect(host: str, port: int, timeout=1.2) -> bool:
             return True
     except Exception:
         return False
+
+def http_get(url: str, timeout=8):
+    try:
+        return requests.get(url, timeout=timeout, allow_redirects=True, headers=UA)
+    except Exception:
+        return None
+
+def fetch_text(url: str, max_chars=5000):
+    r = http_get(url)
+    if not r or r.status_code >= 400:
+        return None
+    return (r.text or "")[:max_chars]
+
+def check_security_txt(host: str):
+    # Public file: security.txt
+    urls = [f"https://{host}/.well-known/security.txt", f"https://{host}/security.txt"]
+    for u in urls:
+        txt = fetch_text(u, max_chars=5000)
+        if txt:
+            return u, txt
+    return None, None
+
+def check_redirect_http_to_https(host: str):
+    """
+    Best-effort: prova HTTP e vede se finisce su HTTPS.
+    """
+    try:
+        r = requests.get(f"http://{host}", timeout=8, allow_redirects=True, headers=UA)
+        final = r.url or ""
+        return True, final.lower().startswith("https://"), final, r.status_code
+    except Exception:
+        return False, False, None, None
+
+def hsts_preload_readiness(hsts_value: str):
+    """
+    Controllo "preload readiness" best-effort:
+    - includeSubDomains
+    - preload
+    - max-age >= 31536000
+    """
+    if not hsts_value:
+        return False, ["Header HSTS mancante"]
+
+    v = hsts_value.lower()
+    issues = []
+
+    # max-age
+    max_age = None
+    try:
+        parts = [p.strip() for p in v.split(";")]
+        for p in parts:
+            if p.startswith("max-age"):
+                max_age = int(p.split("=", 1)[1].strip())
+                break
+    except Exception:
+        max_age = None
+
+    if max_age is None:
+        issues.append("max-age non trovato")
+    elif max_age < 31536000:
+        issues.append("max-age < 31536000 (1 anno)")
+
+    if "includesubdomains" not in v:
+        issues.append("includeSubDomains mancante")
+    if "preload" not in v:
+        issues.append("preload mancante")
+
+    return len(issues) == 0, issues
+
+def ct_subdomains(domain_root: str, limit: int = 200):
+    """
+    OSINT pubblico via Certificate Transparency (crt.sh).
+    Restituisce subdomini trovati nei certificati.
+    """
+    try:
+        url = f"https://crt.sh/?q=%25.{domain_root}&output=json"
+        r = requests.get(url, timeout=10, headers=UA)
+        if r.status_code != 200:
+            return []
+
+        data = r.json()
+        names = set()
+        for row in data:
+            nv = row.get("name_value", "")
+            for n in str(nv).splitlines():
+                n = n.strip().lower()
+                if n.startswith("*."):
+                    n = n[2:]
+                if n and n.endswith(domain_root):
+                    names.add(n)
+                if len(names) >= limit:
+                    break
+            if len(names) >= limit:
+                break
+
+        return sorted(names)
+    except Exception:
+        return []
 
 # ------------------------------------------------
 # SESSION STATE (per non perdere i risultati al rerun)
@@ -185,7 +285,7 @@ try:
             f"http://{host}",
             timeout=8,
             allow_redirects=True,
-            headers={"User-Agent": "SecurityQuickCheck/1.0"},
+            headers=UA,
         )
         final_url, status, headers = r.url, r.status_code, r.headers
         st.write(f"URL finale (HTTP): {final_url}")
@@ -348,15 +448,61 @@ else:
         st.warning("⚠ Alcune porte comuni risultano esposte: verifica che siano volute e protette (firewall/VPN/ACL).")
 
 # ------------------------------------------------
-# 8) Data Breach / Darkweb (GRATIS) — Nota realistica
+# 8) OSINT PACK (GRATIS) — CT + security.txt + redirect + HSTS preload
 # ------------------------------------------------
-st.markdown("## 8) Data Breach / Darkweb (GRATIS) — Nota realistica")
-st.info(
-    "Un controllo 'dark web' affidabile richiede tipicamente database proprietari o servizi a pagamento "
-    "(es. provider intelligence / breach monitoring). "
-    "Questa app non esegue interrogazioni dark web e non effettua raccolta di credenziali. "
-    "Qui si mostrano solo segnali tecnici pubblici (HTTP/DNS/SSL)."
-)
+st.markdown("## 8) OSINT Pack (GRATIS) — Asset & Best Practice Pubbliche")
+
+# 8.1 Redirect HTTP -> HTTPS
+st.markdown("### 8.1 Redirect HTTP → HTTPS")
+ok_http, is_https, final, code = check_redirect_http_to_https(host)
+if not ok_http:
+    st.warning("Impossibile verificare il redirect (HTTP non raggiungibile o filtrato).")
+else:
+    st.write(f"Final URL: {final} (status {code})")
+    if is_https:
+        st.success("✔ Redirect a HTTPS presente (best-effort).")
+    else:
+        st.warning("⚠ Non risulta redirect a HTTPS (best-effort). Consigliato redirect 80→443.")
+
+# 8.2 security.txt
+st.markdown("### 8.2 security.txt (RFC best practice)")
+sec_url, sec_txt = check_security_txt(host)
+if sec_txt:
+    st.success("✔ security.txt trovato")
+    st.write(f"URL: {sec_url}")
+    st.code(sec_txt)
+else:
+    st.warning("⚠ security.txt non trovato (best practice per contatto vulnerabilità).")
+
+# 8.3 HSTS preload readiness (solo se header presente)
+st.markdown("### 8.3 HSTS Preload Readiness (best-effort)")
+hsts_val = headers.get("Strict-Transport-Security") if isinstance(headers, dict) else None
+if not hsts_val:
+    st.warning("⚠ HSTS non presente. (Per siti web pubblici è raccomandato abilitare HSTS.)")
+else:
+    st.code(hsts_val)
+    ready, issues = hsts_preload_readiness(hsts_val)
+    if ready:
+        st.success("✔ Configurazione HSTS compatibile con requisiti preload (best-effort).")
+    else:
+        st.warning("⚠ HSTS non 'preload-ready' (best-effort). Dettagli:")
+        for i in issues:
+            st.write(f"- {i}")
+
+# 8.4 Certificate Transparency (solo dominio)
+st.markdown("### 8.4 Certificate Transparency (subdomini dai registri pubblici)")
+if is_ip:
+    st.info("CT: non applicabile a IP. Inserisci un dominio per ottenere subdomini da registri pubblici.")
+else:
+    with st.spinner("Ricerca CT in corso (crt.sh)..."):
+        subs = ct_subdomains(root, limit=200)
+
+    if not subs:
+        st.warning("Nessun risultato CT trovato (o sorgente momentaneamente non disponibile).")
+    else:
+        st.success(f"Trovati {len(subs)} possibili subdomini nei registri CT (best-effort).")
+        st.code("\n".join(subs[:200]))
+        st.caption("Nota: presenza in CT ≠ vulnerabilità. È un indicatore di superficie esposta (asset discovery).")
 
 # ------------------------------------------------
 # 9) Risultati sintetici (Checklist)
@@ -366,7 +512,7 @@ st.markdown("## 9) Checklist sintetica")
 checks_ok = 0
 checks_total = 0
 
-# HTTPS reachable (solo se dominio; su IP abbiamo fatto HTTP)
+# Reachability
 checks_total += 1
 if (not is_ip) and status in (200, 301, 302, 307, 308):
     st.success("✔ HTTPS raggiungibile")
