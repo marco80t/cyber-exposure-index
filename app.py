@@ -234,42 +234,41 @@ if go and domain:
     # Placeholder: così la sezione 7 viene renderizzata SEMPRE nello stesso punto
     section7 = st.container()
     
-    # ------------------------------------------------
-    # 7) Exposure — Porte comuni (best-effort)
-    # ------------------------------------------------
-            st.markdown("## 7) Exposure — Porte comuni (best-effort)")
-    
-        if not advanced:
-            st.info("Attiva la modalità tecnica avanzata (punto 6) per visualizzare i controlli sulle porte.")
+# ------------------------------------------------
+# 7) Exposure — Porte comuni (best-effort)
+# ------------------------------------------------
+st.markdown("## 7) Exposure — Porte comuni (best-effort)")
+
+if not advanced:
+    st.info("Attiva la modalità tecnica avanzata (punto 6) per visualizzare i controlli sulle porte.")
+else:
+    st.info(
+        "Controllo leggero: verifica solo se la porta risponde (TCP connect). "
+        "Nessuna scansione aggressiva, nessun brute-force, nessun tentativo di accesso."
+    )
+
+    common_ports = [
+        (21, "FTP"),
+        (22, "SSH"),
+        (25, "SMTP"),
+        (80, "HTTP"),
+        (443, "HTTPS"),
+        (3306, "MySQL"),
+        (3389, "RDP"),
+    ]
+
+    open_ports = 0
+    for p, name in common_ports:
+        if tcp_connect(host, p):
+            st.warning(f"⚠ Porta {p} ({name}) aperta (best-effort)")
+            open_ports += 1
         else:
-            st.info(
-                "Controllo leggero: verifica solo se la porta risponde (TCP connect). "
-                "Nessuna scansione aggressiva, nessun brute-force, nessun tentativo di accesso."
-            )
-    
-            common_ports = [
-                (21, "FTP"),
-                (22, "SSH"),
-                (25, "SMTP"),
-                (80, "HTTP"),
-                (443, "HTTPS"),
-                (3306, "MySQL"),
-                (3389, "RDP"),
-            ]
-    
-            open_ports = 0
-            for p, name in common_ports:
-                if tcp_connect(host, p):
-                    st.warning(f"⚠ Porta {p} ({name}) aperta (best-effort)")
-                    open_ports += 1
-                else:
-                    st.success(f"✔ Porta {p} ({name}) chiusa")
-    
-            if open_ports == 0:
-                st.success("✔ Nessuna porta comune risulta esposta (best-effort).")
-            else:
-                st.warning("⚠ Alcune porte comuni risultano esposte: verifica che siano volute e protette (firewall/VPN/ACL).")
-    
+            st.success(f"✔ Porta {p} ({name}) chiusa")
+
+    if open_ports == 0:
+        st.success("✔ Nessuna porta comune risulta esposta (best-effort).")
+    else:
+        st.warning("⚠ Alcune porte comuni risultano esposte: verifica che siano volute e protette (firewall/VPN/ACL).")
     # ------------------------------------------------
     # 8) Data Breach / Darkweb (GRATIS) — Nota realistica
     # ------------------------------------------------
@@ -393,6 +392,7 @@ if go and domain:
         st.warning("Livello di esposizione: *MEDIO*")
     else:
         st.success("Livello di esposizione: *BASSO*")
+
 
 
 
