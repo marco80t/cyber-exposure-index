@@ -736,3 +736,4 @@ else:
 
 st.markdown("---")
 st.caption("Suggerimento: se vuoi, aggiungi contatti e CTA (report PDF + remediation plan) in sidebar per trasformare il tool in lead generator.")
+
