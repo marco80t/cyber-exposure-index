@@ -4,24 +4,57 @@ import ssl
 import socket
 import ipaddress
 from datetime import datetime, timezone
-from urllib.parse import urlparse
 
 import dns.resolver
 import tldextract
+
+# PDF
+from io import BytesIO
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+
 
 # ------------------------------------------------
 # CONFIG / UI
 # ------------------------------------------------
 st.set_page_config(page_title="Security Quick Check", page_icon="🛡️", layout="wide")
+UA = {"User-Agent": "SecurityQuickCheck/1.0"}
 
+# ------------------------------------------------
+# SIDEBAR
+# ------------------------------------------------
+with st.sidebar:
+    st.markdown("## 🛡️ Security Quick Check")
+    st.caption("Verifica preliminare su dati pubblici (HTTP/DNS/SSL).")
+
+    try:
+        st.image("assets/logo.png", use_container_width=True)
+    except Exception:
+        pass
+
+    st.markdown("---")
+    st.markdown("### Contatti")
+    st.write("📩 **security@tmconsulenza.it**")
+    st.write("🌐 **tmconsulenza.it**")
+
+    st.markdown("---")
+    st.markdown("### Disclaimer")
+    st.caption(
+        "Tool basato su informazioni pubbliche e richieste standard. "
+        "Non esegue exploit, brute-force, autenticazioni o scanning esteso. "
+        "La modalità tecnica fa solo TCP connect su poche porte comuni e va usata solo con autorizzazione."
+    )
+
+# ------------------------------------------------
+# MAIN
+# ------------------------------------------------
 st.title("Security Quick Check")
 st.write("Analisi basata esclusivamente su informazioni pubbliche (HTTP / DNS / SSL). Nessun test intrusivo.")
 st.caption("Nota: verifica preliminare. Non sostituisce un assessment professionale completo.")
 
-UA = {"User-Agent": "SecurityQuickCheck/1.0"}
 
 # ------------------------------------------------
-# HELPERS (PUBLIC / SAFE)
+# HELPERS
 # ------------------------------------------------
 def normalize_input(v: str) -> str:
     v = (v or "").strip().lower()
@@ -70,39 +103,7 @@ def fetch_headers_https(host: str):
     )
     return r.url, r.status_code, r.headers
 
-def check_redirect_http_to_https(host: str):
-    """
-    Best-effort: prova HTTP e vede se finisce su HTTPS.
-    """
-    try:
-        r = requests.get(f"http://{host}", timeout=10, allow_redirects=True, headers=UA)
-        final = r.url or ""
-        return True, final.lower().startswith("https://"), final, r.status_code
-    except Exception:
-        return False, False, None, None
-
-def check_www_variant(domain_root: str):
-    """
-    Best-effort: confronta www.<root> e <root>, vede se redirigono ad un canonical uguale.
-    """
-    try:
-        r1 = requests.get(f"https://{domain_root}", timeout=10, allow_redirects=True, headers=UA)
-        r2 = requests.get(f"https://www.{domain_root}", timeout=10, allow_redirects=True, headers=UA)
-        return {
-            "ok": True,
-            "apex_final": r1.url,
-            "www_final": r2.url,
-            "apex_status": r1.status_code,
-            "www_status": r2.status_code,
-            "same_final": (r1.url == r2.url),
-        }
-    except Exception:
-        return {"ok": False}
-
 def tls_details(host: str, port: int = 443):
-    """
-    Connessione TLS best-effort: versione TLS, cipher, cert subject/SAN/issuer, scadenza.
-    """
     ctx = ssl.create_default_context()
     with socket.create_connection((host, port), timeout=8) as sock:
         with ctx.wrap_socket(sock, server_hostname=host) as ssock:
@@ -117,19 +118,17 @@ def tls_details(host: str, port: int = 443):
         expires = datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=timezone.utc)
         days_left = (expires - datetime.now(timezone.utc)).days
 
-    # Subject + Issuer
     subject = cert.get("subject", [])
     subject_str = ", ".join("=".join(x) for item in subject for x in item) if subject else "N/D"
     issuer = cert.get("issuer", [])
     issuer_str = ", ".join("=".join(x) for item in issuer for x in item) if issuer else "N/D"
 
-    # SAN
     san = cert.get("subjectAltName", [])
     san_dns = [v for (k, v) in san if k.lower() == "dns"] if san else []
 
     return {
         "tls_version": tls_version,
-        "cipher": cipher,  # tuple (name, protocol, bits)
+        "cipher": cipher,
         "subject": subject_str,
         "issuer": issuer_str,
         "san_dns": san_dns,
@@ -154,99 +153,11 @@ def dns_txt(name: str):
     except Exception:
         return []
 
-def get_caa(domain: str):
-    return dns_query(domain, "CAA")
-
 def dnssec_enabled(domain: str):
-    # Best-effort: se c'è DS sul dominio, la zona è probabilmente firmata.
     return len(dns_query(domain, "DS")) > 0
 
-def fetch_text(url: str, max_chars=5000):
-    r = http_get(url)
-    if not r or r.status_code >= 400:
-        return None
-    return (r.text or "")[:max_chars]
-
-def check_security_txt(host: str):
-    urls = [f"https://{host}/.well-known/security.txt", f"https://{host}/security.txt"]
-    for u in urls:
-        txt = fetch_text(u, max_chars=5000)
-        if txt:
-            return u, txt
-    return None, None
-
-def check_robots_sitemap(host: str):
-    robots_url = f"https://{host}/robots.txt"
-    robots = fetch_text(robots_url, max_chars=5000)
-    sitemaps = []
-    if robots:
-        for line in robots.splitlines():
-            if line.lower().startswith("sitemap:"):
-                sitemaps.append(line.split(":", 1)[1].strip())
-    return robots_url, robots, sitemaps
-
-def hsts_preload_readiness(hsts_value: str):
-    """
-    Best-effort: controlla includeSubDomains + preload + max-age>=31536000
-    """
-    if not hsts_value:
-        return False, ["Header HSTS mancante"]
-
-    v = hsts_value.lower()
-    issues = []
-
-    # max-age
-    max_age = None
-    try:
-        parts = [p.strip() for p in v.split(";")]
-        for p in parts:
-            if p.startswith("max-age"):
-                max_age = int(p.split("=", 1)[1].strip())
-                break
-    except Exception:
-        max_age = None
-
-    if max_age is None:
-        issues.append("max-age non trovato")
-    elif max_age < 31536000:
-        issues.append("max-age < 31536000 (1 anno)")
-
-    if "includesubdomains" not in v:
-        issues.append("includeSubDomains mancante")
-    if "preload" not in v:
-        issues.append("preload mancante")
-
-    return len(issues) == 0, issues
-
-def ct_subdomains(domain_root: str, limit: int = 200):
-    """
-    OSINT pubblico via Certificate Transparency (crt.sh).
-    Restituisce subdomini presenti nei certificati (best-effort).
-    """
-    try:
-        url = f"https://crt.sh/?q=%25.{domain_root}&output=json"
-        r = requests.get(url, timeout=12, headers=UA)
-        if r.status_code != 200:
-            return []
-
-        data = r.json()
-        names = set()
-        for row in data:
-            nv = row.get("name_value", "")
-            for n in str(nv).splitlines():
-                n = n.strip().lower()
-                if n.startswith("*."):
-                    n = n[2:]
-                if n and n.endswith(domain_root):
-                    names.add(n)
-                if len(names) >= limit:
-                    break
-            if len(names) >= limit:
-                break
-
-        return sorted(names)
-    except Exception:
-        return []
+def get_caa(domain: str):
+    return dns_query(domain, "CAA")
 
 def tcp_connect(host: str, port: int, timeout=1.2) -> bool:
     try:
@@ -255,8 +166,112 @@ def tcp_connect(host: str, port: int, timeout=1.2) -> bool:
     except Exception:
         return False
 
+# -------- DKIM --------
+def dkim_lookup(domain_root: str, selector: str):
+    name = f"{selector}._domainkey.{domain_root}"
+    txts = dns_txt(name)
+    for t in txts:
+        if "v=dkim1" in t.lower():
+            return name, t
+    return name, None
+
+def detect_mail_provider_from_mx(mx_records: list[str]) -> str:
+    """Best-effort: identifica provider guardando MX."""
+    mx_l = " ".join(mx_records).lower()
+    if "protection.outlook.com" in mx_l or "mail.protection.outlook.com" in mx_l or "outlook.com" in mx_l:
+        return "m365"
+    if "google.com" in mx_l or "googlemail.com" in mx_l:
+        return "google"
+    return "unknown"
+
+def dkim_selectors_to_try(domain_root: str, mx_records: list[str]) -> list[str]:
+    # base
+    common = [
+        "default", "selector1", "selector2", "google", "smtp", "mail", "dkim",
+        "s1", "s2", "m1", "m2", "k1", "k2", "mail1", "mail2"
+    ]
+
+    provider = detect_mail_provider_from_mx(mx_records)
+
+    if provider == "m365":
+        # Microsoft 365 tipicamente usa selector1/selector2
+        boosted = ["selector1", "selector2"]
+    elif provider == "google":
+        # Google a volte usa google._domainkey + (a volte selector personalizzati)
+        boosted = ["google", "selector1", "selector2"]
+    else:
+        boosted = ["selector1", "selector2", "default", "google"]
+
+    # unisci mantenendo ordine e unicità
+    out = []
+    for s in boosted + common:
+        if s not in out:
+            out.append(s)
+    return out
+
+def dkim_best_effort(domain_root: str, mx_records: list[str]):
+    sels = dkim_selectors_to_try(domain_root, mx_records)
+    attempts = []
+    found = []
+    for sel in sels:
+        qname, rec = dkim_lookup(domain_root, sel)
+        attempts.append(qname)
+        if rec:
+            found.append((sel, qname, rec))
+    return found, attempts
+
+
 # ------------------------------------------------
-# SESSION STATE (per non perdere i risultati al rerun)
+# PDF
+# ------------------------------------------------
+def build_pdf_report(report: dict) -> bytes:
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+    w, h = A4
+
+    def line(y, text, size=10):
+        c.setFont("Helvetica", size)
+        c.drawString(40, y, text)
+
+    y = h - 50
+    line(y, "Security Quick Check - Report (preliminare)", 14)
+    y -= 20
+    line(y, f"Target: {report.get('target','')}", 11)
+    y -= 14
+    line(y, f"Data: {report.get('date','')}", 10)
+    y -= 20
+
+    line(y, "Disclaimer:", 11)
+    y -= 12
+    for chunk in report.get("disclaimer", "").split("\n"):
+        line(y, chunk, 9)
+        y -= 11
+        if y < 80:
+            c.showPage()
+            y = h - 50
+
+    y -= 10
+    line(y, "Risultati principali:", 11)
+    y -= 14
+
+    for section, items in report.get("sections", {}).items():
+        line(y, f"- {section}", 11)
+        y -= 12
+        for it in items:
+            line(y, f"  • {it}", 9)
+            y -= 11
+            if y < 80:
+                c.showPage()
+                y = h - 50
+        y -= 6
+
+    c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
+# ------------------------------------------------
+# SESSION STATE
 # ------------------------------------------------
 if "analyzed" not in st.session_state:
     st.session_state.analyzed = False
@@ -265,10 +280,11 @@ if "target_value" not in st.session_state:
 if "advanced" not in st.session_state:
     st.session_state.advanced = False
 
+
 # ------------------------------------------------
 # INPUT
 # ------------------------------------------------
-target = st.text_input("Dominio o IP pubblico (es: azienda.it oppure 8.8.8.8)", value=st.session_state.target_value)
+target = st.text_input("Dominio o IP pubblico (es: tmconsulenza.it oppure 8.8.8.8)", value=st.session_state.target_value)
 go = st.button("Analizza")
 
 if go and target:
@@ -278,6 +294,7 @@ if go and target:
 if not st.session_state.analyzed or not st.session_state.target_value:
     st.info("Inserisci un dominio (o IP pubblico) e premi *Analizza*.")
     st.stop()
+
 
 # ------------------------------------------------
 # ANALISI
@@ -298,22 +315,28 @@ st.write(f"Tipo: {'IP pubblico' if is_ip else 'Dominio'}")
 if not is_ip:
     st.write(f"Dominio principale (apex): {root}")
 
-# Safe defaults
+# defaults
 final_url = None
 status = 0
 headers = {}
 tls = {}
-spf = None
-dmarc = None
-dnssec = False
-caa = []
-ns = []
-mx = []
-soa = []
 header_score = 0
 
+spf = None
+dmarc = None
+mx = []
+ns = []
+soa = []
+dnssec = False
+caa = []
+
+dkim_found = []
+dkim_attempts = []
+dkim_manual_record = None
+
+
 # ------------------------------------------------
-# 1) SECURITY HEADERS
+# 1) Security Headers
 # ------------------------------------------------
 st.markdown("## 1) Security Headers")
 
@@ -340,17 +363,18 @@ try:
 except Exception:
     st.error("Impossibile leggere gli header (host non raggiungibile / errore SSL / redirect).")
 
-for h in header_list:
-    if h in headers:
-        st.success(f"✔ {h} presente")
+for hname in header_list:
+    if hname in headers:
+        st.success(f"✔ {hname} presente")
         header_score += 1
     else:
-        st.warning(f"⚠ {h} mancante")
+        st.warning(f"⚠ {hname} mancante")
 
 st.caption(f"Punteggio headers: {header_score}/{len(header_list)}")
 
+
 # ------------------------------------------------
-# 2) TLS / SSL (RICH)
+# 2) TLS / SSL (dettagli)
 # ------------------------------------------------
 st.markdown("## 2) TLS / SSL (dettagli)")
 
@@ -364,9 +388,9 @@ else:
         tls = tls_details(host, 443)
         st.success("Connessione TLS riuscita (best-effort).")
         st.write(f"TLS Version: **{tls.get('tls_version','N/D')}**")
-        c = tls.get("cipher")
-        if c:
-            st.write(f"Cipher: **{c[0]}** — {c[1]} — {c[2]} bits")
+        ciph = tls.get("cipher")
+        if ciph:
+            st.write(f"Cipher: **{ciph[0]}** — {ciph[1]} — {ciph[2]} bits")
 
         st.write(f"Issuer: {tls.get('issuer','N/D')}")
         st.write(f"Subject: {tls.get('subject','N/D')}")
@@ -376,10 +400,10 @@ else:
             st.write("SAN (DNS) principali:")
             st.code("\n".join(san_dns[:50]))
 
-        if tls.get("days_left") is None:
+        dl = tls.get("days_left")
+        if dl is None:
             st.warning("Non riesco a determinare la scadenza del certificato.")
         else:
-            dl = tls["days_left"]
             if dl < 0:
                 st.error(f"Certificato SCADUTO ({dl} giorni).")
             elif dl < 30:
@@ -392,66 +416,103 @@ else:
     except Exception:
         st.error("Impossibile verificare TLS/SSL (porta 443 non disponibile o handshake fallito).")
 
+
 # ------------------------------------------------
-# 3) EMAIL SECURITY (SPF / DMARC)
+# 3) Email Security (SPF / DMARC / DKIM)
 # ------------------------------------------------
-st.markdown("## 3) Email Security (SPF / DMARC)")
+st.markdown("## 3) Email Security (SPF / DMARC / DKIM)")
 
 if is_ip:
-    st.info("Per IP non esistono SPF/DMARC (sono record DNS del dominio).")
+    st.info("Per IP non esistono SPF/DMARC/DKIM (sono record DNS del dominio).")
 else:
+    # SPF / DMARC
     spf = next((x for x in dns_txt(root) if x.lower().startswith("v=spf1")), None)
     dmarc = next((x for x in dns_txt(f"_dmarc.{root}") if x.lower().startswith("v=dmarc1")), None)
 
-    if spf:
-        st.success("✔ SPF presente")
-        st.code(spf)
-    else:
-        st.warning("⚠ SPF assente (record TXT v=spf1 mancante)")
+    c1, c2 = st.columns(2)
+    with c1:
+        if spf:
+            st.success("✔ SPF presente")
+            st.code(spf)
+        else:
+            st.warning("⚠ SPF assente (record TXT v=spf1 mancante)")
+    with c2:
+        if dmarc:
+            st.success("✔ DMARC presente")
+            st.code(dmarc)
+        else:
+            st.warning("⚠ DMARC assente (record TXT su _dmarc.<dominio> mancante)")
 
-    if dmarc:
-        st.success("✔ DMARC presente")
-        st.code(dmarc)
+    st.markdown("---")
+    st.markdown("### DKIM (auto + manuale)")
+    st.caption("DKIM dipende dal selector. Qui proviamo selector comuni + dedotti dai MX, e puoi inserirne uno manuale.")
+
+    # MX (serve per autodetect)
+    mx = dns_query(root, "MX")
+    if mx:
+        st.write("MX rilevati (best-effort):")
+        st.code("\n".join(mx[:30]))
     else:
-        st.warning("⚠ DMARC assente (record TXT su _dmarc.<dominio> mancante)")
+        st.info("MX non rilevati (può essere normale se non usi posta sul dominio).")
+
+    # DKIM auto
+    dkim_found, dkim_attempts = dkim_best_effort(root, mx)
+
+    if dkim_found:
+        st.success(f"✔ DKIM trovato su {len(dkim_found)} selector (best-effort)")
+        for sel, qname, rec in dkim_found[:10]:
+            st.write(f"Selector: **{sel}** — `{qname}`")
+            st.code(rec[:1200])
+    else:
+        st.warning("⚠ DKIM non trovato nei tentativi automatici (best-effort).")
+
+    with st.expander("Mostra query DKIM tentate (debug)"):
+        st.code("\n".join(dkim_attempts[:60]) if dkim_attempts else "Nessun tentativo effettuato.")
+
+    # Manual selector
+    selector = st.text_input("Selector DKIM manuale (opzionale) — esempio: selector1 / selector2 / google", value="")
+    if selector.strip():
+        qname, rec = dkim_lookup(root, selector.strip())
+        if rec:
+            st.success("✔ DKIM trovato per selector manuale")
+            st.write(f"Query: `{qname}`")
+            st.code(rec[:1500])
+            dkim_manual_record = rec
+        else:
+            st.warning("⚠ Nessun record DKIM trovato per questo selector (best-effort).")
+            st.write(f"Query fatta: `{qname}`")
+
 
 # ------------------------------------------------
-# 4) DNS HYGIENE / HARDENING (DNSSEC / CAA / NS / MX / SOA)
+# 4) DNS Hygiene / Hardening
 # ------------------------------------------------
-st.markdown("## 4) DNS Hygiene / Hardening (DNSSEC / CAA / NS / MX / SOA)")
+st.markdown("## 4) DNS Hygiene / Hardening (DNSSEC / CAA / NS / SOA)")
 
 if is_ip:
-    st.info("Per IP non si applicano DNSSEC/CAA/NS/MX/SOA (valgono per il dominio).")
+    st.info("Per IP non si applicano DNSSEC/CAA/NS/SOA (valgono per il dominio).")
 else:
     dnssec = dnssec_enabled(root)
     caa = get_caa(root)
     ns = dns_query(root, "NS")
-    mx = dns_query(root, "MX")
     soa = dns_query(root, "SOA")
 
     if dnssec:
-        st.success("✔ DNSSEC: record DS trovato (best-effort: zona probabilmente firmata)")
+        st.success("✔ DNSSEC: record DS trovato (best-effort)")
         st.code("\n".join(dns_query(root, "DS")))
     else:
-        st.warning("⚠ DNSSEC: record DS non trovato (probabilmente non firmato)")
+        st.warning("⚠ DNSSEC: record DS non trovato")
 
     if caa:
-        st.success("✔ CAA presente (limita chi può emettere certificati)")
+        st.success("✔ CAA presente")
         st.code("\n".join(caa))
     else:
         st.warning("⚠ CAA assente")
 
     if ns:
-        st.success("✔ NS (nameserver) rilevati")
+        st.success("✔ NS rilevati")
         st.code("\n".join(ns))
     else:
         st.warning("⚠ NS non rilevati (anomalo)")
-
-    if mx:
-        st.success("✔ MX (mail exchanger) rilevati")
-        st.code("\n".join(mx))
-    else:
-        st.warning("⚠ MX assenti (può essere normale se non gestisci posta sul dominio)")
 
     if soa:
         st.success("✔ SOA rilevato")
@@ -459,25 +520,26 @@ else:
     else:
         st.warning("⚠ SOA non rilevato (anomalo)")
 
+
 # ------------------------------------------------
-# 5) REPUTATION / LIMITI (SAFE)
+# 5) Limiti & Legal Safe Mode
 # ------------------------------------------------
 st.markdown("## 5) Limiti & Legal Safe Mode")
 st.info(
     "Questo strumento usa solo dati pubblici e richieste standard (HTTP/DNS/SSL). "
     "Non esegue exploit, brute-force, autenticazioni, né scanning esteso. "
-    "Le verifiche tecniche aggiuntive (porte) sono best-effort e vanno usate solo con autorizzazione del proprietario."
+    "La modalità tecnica fa solo TCP connect su poche porte comuni ed è da usare solo con autorizzazione."
 )
 
+
 # ------------------------------------------------
-# 6) MODALITÀ TECNICA (solo con autorizzazione)
+# 6) Modalità tecnica
 # ------------------------------------------------
 st.markdown("## 6) Modalità tecnica")
 st.caption(
     "Abilita controlli best-effort aggiuntivi (semplice TCP connect su poche porte comuni). "
     "Da usare solo con autorizzazione del proprietario."
 )
-
 st.session_state.advanced = st.checkbox(
     "Modalità tecnica avanzata (richiede autorizzazione del proprietario)",
     value=st.session_state.advanced,
@@ -485,19 +547,20 @@ st.session_state.advanced = st.checkbox(
 )
 advanced = st.session_state.advanced
 
+
 # ------------------------------------------------
-# 7) Exposure — Porte comuni (best-effort)
+# 7) Exposure — Porte comuni
 # ------------------------------------------------
 st.markdown("## 7) Exposure — Porte comuni (best-effort)")
 
 if not advanced:
     st.info("Attiva la modalità tecnica avanzata (punto 6) per visualizzare i controlli sulle porte.")
+    port_results = []
 else:
     st.info(
         "Controllo leggero: verifica solo se la porta risponde (TCP connect). "
         "Nessuna scansione aggressiva, nessun brute-force, nessun tentativo di accesso."
     )
-
     common_ports = [
         (21, "FTP"),
         (22, "SSH"),
@@ -515,9 +578,12 @@ else:
         (9200, "Elasticsearch"),
     ]
 
+    port_results = []
     open_ports = 0
     for p, name in common_ports:
-        if tcp_connect(host, p):
+        is_open = tcp_connect(host, p)
+        port_results.append((p, name, is_open))
+        if is_open:
             st.warning(f"⚠ Porta {p} ({name}) aperta (best-effort)")
             open_ports += 1
         else:
@@ -528,94 +594,13 @@ else:
     else:
         st.warning("⚠ Alcune porte comuni risultano esposte: verifica che siano volute e protette (firewall/VPN/ACL).")
 
+
 # ------------------------------------------------
-# 8) OSINT PACK (GRATIS) — redirect / security.txt / robots / sitemap / HSTS / CT
+# 8) OSINT Pack (gratis, pubblico)
 # ------------------------------------------------
-st.markdown("## 8) OSINT Pack — Asset & Best Practice Pubbliche (gratis)")
+st.markdown("## 8) OSINT Pack (pubblico / gratis)")
+st.info("Sezione OSINT basata solo su risorse pubbliche. Nessun accesso non autorizzato.")
 
-# 8.1 Redirect HTTP -> HTTPS
-st.markdown("### 8.1 Redirect HTTP → HTTPS")
-ok_http, is_https, final, code = check_redirect_http_to_https(host)
-if not ok_http:
-    st.warning("Impossibile verificare il redirect (HTTP non raggiungibile o filtrato).")
-else:
-    st.write(f"Final URL: {final} (status {code})")
-    if is_https:
-        st.success("✔ Redirect a HTTPS presente (best-effort).")
-    else:
-        st.warning("⚠ Non risulta redirect a HTTPS (best-effort). Consigliato redirect 80→443.")
-
-# 8.2 WWW vs apex canonical
-st.markdown("### 8.2 WWW ↔ non-WWW (canonical)")
-if is_ip:
-    st.info("Canonical WWW: non applicabile a IP.")
-else:
-    vv = check_www_variant(root)
-    if not vv.get("ok"):
-        st.warning("Impossibile verificare WWW/non-WWW (best-effort).")
-    else:
-        st.write(f"Apex finale: {vv['apex_final']} (status {vv['apex_status']})")
-        st.write(f"WWW finale: {vv['www_final']} (status {vv['www_status']})")
-        if vv["same_final"]:
-            st.success("✔ www e non-www convergono allo stesso URL finale (best-effort).")
-        else:
-            st.warning("⚠ www e non-www NON convergono: consigliato scegliere un canonical e redirigere l’altro.")
-
-# 8.3 security.txt
-st.markdown("### 8.3 security.txt (best practice)")
-sec_url, sec_txt = check_security_txt(host)
-if sec_txt:
-    st.success("✔ security.txt trovato")
-    st.write(f"URL: {sec_url}")
-    st.code(sec_txt)
-else:
-    st.warning("⚠ security.txt non trovato (best practice per contatto vulnerabilità).")
-
-# 8.4 robots / sitemap
-st.markdown("### 8.4 robots.txt & sitemap")
-robots_url, robots_txt, sitemaps = check_robots_sitemap(host)
-if robots_txt:
-    st.success("✔ robots.txt trovato")
-    st.write(f"URL: {robots_url}")
-    st.code(robots_txt[:2000])
-    if sitemaps:
-        st.success("✔ Sitemap dichiarate in robots.txt")
-        for sm in sitemaps[:20]:
-            st.write(f"- {sm}")
-    else:
-        st.info("Nessuna sitemap dichiarata in robots.txt (best-effort).")
-else:
-    st.warning("⚠ robots.txt non trovato (best-effort).")
-
-# 8.5 HSTS preload readiness
-st.markdown("### 8.5 HSTS Preload Readiness (best-effort)")
-hsts_val = headers.get("Strict-Transport-Security") if isinstance(headers, dict) else None
-if not hsts_val:
-    st.warning("⚠ HSTS non presente. (Per siti web pubblici è raccomandato abilitare HSTS.)")
-else:
-    st.code(hsts_val)
-    ready, issues = hsts_preload_readiness(hsts_val)
-    if ready:
-        st.success("✔ Configurazione HSTS compatibile con requisiti preload (best-effort).")
-    else:
-        st.warning("⚠ HSTS non 'preload-ready' (best-effort). Dettagli:")
-        for i in issues:
-            st.write(f"- {i}")
-
-# 8.6 Certificate Transparency (solo dominio)
-st.markdown("### 8.6 Certificate Transparency (subdomini dai registri pubblici)")
-if is_ip:
-    st.info("CT: non applicabile a IP. Inserisci un dominio per ottenere subdomini da registri pubblici.")
-else:
-    with st.spinner("Ricerca CT in corso (crt.sh)..."):
-        subs = ct_subdomains(root, limit=200)
-
-    if not subs:
-        st.warning("Nessun risultato CT trovato (o sorgente momentaneamente non disponibile).")
-    else:
-        st.success(f"Trovati {len(subs)} possibili subdomini nei registri CT (best-effort).")
-        st.code("\n".join(subs[:200]))
-        st.caption("Nota: presenza in CT ≠ vulnerabilità. È un indicatore di superficie esposta (asset discovery).")
 
 # ------------------------------------------------
 # 9) Checklist sintetica
@@ -644,54 +629,53 @@ else:
 if not is_ip:
     checks_total += 1
     if spf:
-        st.success("✔ SPF presente")
-        checks_ok += 1
+        st.success("✔ SPF presente"); checks_ok += 1
     else:
         st.warning("⚠ SPF assente")
 
     checks_total += 1
     if dmarc:
-        st.success("✔ DMARC presente")
-        checks_ok += 1
+        st.success("✔ DMARC presente"); checks_ok += 1
     else:
         st.warning("⚠ DMARC assente")
 
     checks_total += 1
+    dkim_ok = bool(dkim_found) or bool(dkim_manual_record)
+    if dkim_ok:
+        st.success("✔ DKIM presente (best-effort)"); checks_ok += 1
+    else:
+        st.warning("⚠ DKIM non rilevato (potrebbe essere su selector non testato)")
+
+    checks_total += 1
     if dnssec:
-        st.success("✔ DNSSEC presente")
-        checks_ok += 1
+        st.success("✔ DNSSEC presente"); checks_ok += 1
     else:
         st.warning("⚠ DNSSEC assente")
 
     checks_total += 1
     if caa:
-        st.success("✔ CAA presente")
-        checks_ok += 1
+        st.success("✔ CAA presente"); checks_ok += 1
     else:
         st.warning("⚠ CAA assente")
-else:
-    st.info("SPF/DMARC/DNSSEC/CAA: N/A su IP (valgono sul dominio).")
 
 st.caption(f"Checklist: {checks_ok}/{checks_total}")
 
+
 # ------------------------------------------------
-# 10) CYBER EXPOSURE INDEX (Score)
+# 10) Cyber Exposure Index (Score)
 # ------------------------------------------------
 st.markdown("## 10) Cyber Exposure Index")
 
-# WEIGHTS: Web(40) Email(35) DNS(25)
 web = 0
 email_score = 0
 dns_score = 0
 
-# WEB
 if status in (200, 301, 302, 307, 308):
     web += 10
 if (not is_ip) and isinstance(tls.get("days_left"), int) and tls["days_left"] > 0:
     web += 10
 web += min(20, header_score * 5)
 
-# EMAIL
 if not is_ip:
     if spf:
         email_score += 10
@@ -702,14 +686,13 @@ if not is_ip:
             email_score += 5
         if "p=reject" in dl:
             email_score += 10
+    if bool(dkim_found) or bool(dkim_manual_record):
+        email_score += 5
 
-# DNS
-if not is_ip:
     if dnssec:
         dns_score += 10
     if caa:
         dns_score += 10
-    # bonus “igiene DNS”
     if mx:
         dns_score += 3
     if ns:
@@ -734,6 +717,73 @@ elif total < 70:
 else:
     st.success("Livello di esposizione: BASSO")
 
-st.markdown("---")
-st.caption("Suggerimento: se vuoi, aggiungi contatti e CTA (report PDF + remediation plan) in sidebar per trasformare il tool in lead generator.")
 
+# ------------------------------------------------
+# PDF EXPORT
+# ------------------------------------------------
+st.markdown("---")
+st.markdown("## 📄 Report PDF")
+
+disclaimer_pdf = (
+    "Report automatico basato su informazioni pubbliche (HTTP/DNS/SSL) e richieste standard. "
+    "Non include test intrusivi e non sostituisce un assessment professionale completo.\n"
+    "La sezione 'porte' è best-effort (TCP connect su poche porte) e va usata solo con autorizzazione."
+)
+
+dkim_summary = "N/A su IP"
+if not is_ip:
+    dkim_ok = bool(dkim_found) or bool(dkim_manual_record)
+    dkim_summary = "PRESENTE (best-effort)" if dkim_ok else "NON RILEVATO (best-effort)"
+
+sections = {
+    "Riepilogo": [
+        f"Target: {host}",
+        f"Tipo: {'IP pubblico' if is_ip else 'Dominio'}",
+        (f"Apex: {root}" if not is_ip else "Apex: N/A"),
+    ],
+    "Web / Headers": [
+        f"HTTP status: {status}",
+        f"Headers score: {header_score}/4",
+    ],
+    "TLS/SSL": [
+        f"TLS version: {tls.get('tls_version','N/A') if not is_ip else 'N/A su IP'}",
+        f"SSL days left: {tls.get('days_left','N/A') if not is_ip else 'N/A su IP'}",
+    ],
+    "Email": [
+        f"SPF: {'PRESENTE' if spf else 'ASSENTE' if not is_ip else 'N/A su IP'}",
+        f"DMARC: {'PRESENTE' if dmarc else 'ASSENTE' if not is_ip else 'N/A su IP'}",
+        f"DKIM: {dkim_summary}",
+    ],
+    "DNS": [
+        f"DNSSEC: {'PRESENTE' if dnssec else 'ASSENTE' if not is_ip else 'N/A su IP'}",
+        f"CAA: {'PRESENTE' if (caa and not is_ip) else 'ASSENTE' if not is_ip else 'N/A su IP'}",
+        f"NS: {len(ns) if not is_ip else 'N/A'}",
+        f"MX: {len(mx) if not is_ip else 'N/A'}",
+    ],
+    "Porte (solo modalità tecnica)": [
+        ("N/A (modalità tecnica non attiva)" if not advanced else f"Verificate: {len(port_results)}"),
+        ("N/A" if not advanced else f"Aperte: {sum(1 for _,_,op in port_results if op)}"),
+    ],
+    "Score": [
+        f"Cyber Exposure Index: {total}/100"
+    ]
+}
+
+report_obj = {
+    "target": host,
+    "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+    "disclaimer": disclaimer_pdf,
+    "sections": sections,
+}
+
+pdf_bytes = build_pdf_report(report_obj)
+
+st.download_button(
+    label="⬇️ Scarica Report PDF",
+    data=pdf_bytes,
+    file_name=f"security_quick_check_{host.replace(':','_')}.pdf",
+    mime="application/pdf",
+)
+
+st.markdown("### Vuoi un piano di intervento completo (hardening + remediation)?")
+st.write("Scrivi a **security@tmconsulenza.it** — oggetto: **Security Quick Check**")
