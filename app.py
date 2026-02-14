@@ -188,20 +188,24 @@ if go and domain:
     st.markdown("## 5) Reputation (SAFE)")
     st.info("Analisi esclusivamente su configurazione tecnica pubblica. Nessuna interrogazione dark web.")
 
-    # ------------------------------------------------
-    # 6) MODALITÀ TECNICA (solo con autorizzazione)
-    # ------------------------------------------------
-    advanced = st.checkbox("Modalità tecnica avanzata (richiede autorizzazione del proprietario)")
+    # -----------------------------
+# 6) Modalità tecnica (solo con autorizzazione)
+# -----------------------------
+st.markdown("## 6) Modalità tecnica")
 
-    if advanced:
-        st.markdown("## 6) Exposure — Porte comuni (best-effort)")
-        common_ports = [21, 22, 25, 80, 443, 3306, 3389]
-        for p in common_ports:
-            if tcp_connect(host, p):
-                st.warning(f"Porta {p} aperta")
-            else:
-                st.success(f"Porta {p} chiusa")
+advanced = st.checkbox("Modalità tecnica avanzata (richiede autorizzazione del proprietario)")
 
+if advanced:
+    st.markdown("### Exposure — Porte comuni (best-effort)")
+    st.info("Verifica leggera TCP connect. Nessuno scan aggressivo.")
+
+    common_ports = [21, 22, 25, 80, 443, 3306, 3389]
+
+    for p in common_ports:
+        if tcp_connect(host, p):
+            st.warning(f"Porta {p} aperta")
+        else:
+            st.success(f"Porta {p} chiusa")
     # ------------------------------------------------
     # 7) CYBER EXPOSURE INDEX
     # ------------------------------------------------
@@ -243,3 +247,4 @@ if go and domain:
         st.warning("Livello di esposizione: MEDIO")
     else:
         st.success("Livello di esposizione: BASSO")
+
