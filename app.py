@@ -96,12 +96,18 @@ def tcp_connect(host: str, port: int, timeout=1.2) -> bool:
 domain = st.text_input("Dominio (es: azienda.it)")
 go = st.button("Analizza")
 
+# --- QUI (SUBITO QUI) ---
+st.markdown("## 6) Modalità tecnica")
+st.caption(
+    "Questa modalità abilita controlli best-effort aggiuntivi (semplice TCP connect su poche porte comuni). "
+    "Da usare solo con autorizzazione del proprietario."
+)
+advanced = st.checkbox("Modalità tecnica avanzata (richiede autorizzazione del proprietario)")
 # ==============================================================
 # TUTTO CIÒ CHE VIENE DOPO È DENTRO IL BLOCCO DI ANALISI
 # ==============================================================
 
 if go and domain:
-    advanced = False
     host = normalize_domain(domain)
     root = apex_domain(host)
 
@@ -393,6 +399,7 @@ if go and domain:
         st.warning("Livello di esposizione: *MEDIO*")
     else:
         st.success("Livello di esposizione: *BASSO*")
+
 
 
 
