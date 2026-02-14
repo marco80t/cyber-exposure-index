@@ -221,21 +221,28 @@ if go and domain:
     )
 
     # ------------------------------------------------
-    # 6) MODALITÀ TECNICA (solo con autorizzazione)
-    # ------------------------------------------------
-    st.markdown("## 6) Modalità tecnica")
-    st.caption(
-        "Questa modalità abilita controlli best-effort aggiuntivi (semplice TCP connect su poche porte comuni). "
-        "Da usare *solo* con autorizzazione del proprietario del dominio."
-    )
+# 6) MODALITÀ TECNICA (solo con autorizzazione)
+# ------------------------------------------------
+st.markdown("## 6) Modalità tecnica")
+st.caption(
+    "Questa modalità abilita controlli best-effort aggiuntivi (semplice TCP connect su poche porte comuni). "
+    "Da usare solo con autorizzazione del proprietario."
+)
 
-    advanced = st.checkbox("Modalità tecnica avanzata (richiede autorizzazione del proprietario)")
+advanced = st.checkbox("Modalità tecnica avanzata (richiede autorizzazione del proprietario)")
 
-    # ------------------------------------------------
-    # 7) Exposure — Porte comuni (best-effort)
-    # ------------------------------------------------
-    if advanced:
-        st.markdown("## 7) Exposure — Porte comuni (best-effort)")
+# Placeholder: così la sezione 7 viene renderizzata SEMPRE nello stesso punto
+section7 = st.container()
+
+# ------------------------------------------------
+# 7) Exposure — Porte comuni (best-effort)
+# ------------------------------------------------
+with section7:
+    st.markdown("## 7) Exposure — Porte comuni (best-effort)")
+
+    if not advanced:
+        st.info("Attiva la modalità tecnica avanzata (punto 6) per visualizzare i controlli sulle porte.")
+    else:
         st.info(
             "Controllo leggero: verifica solo se la porta risponde (TCP connect). "
             "Nessuna scansione aggressiva, nessun brute-force, nessun tentativo di accesso."
@@ -254,7 +261,7 @@ if go and domain:
         open_ports = 0
         for p, name in common_ports:
             if tcp_connect(host, p):
-                st.warning(f"⚠ Porta {p} ({name}) *aperta* (best-effort)")
+                st.warning(f"⚠ Porta {p} ({name}) aperta (best-effort)")
                 open_ports += 1
             else:
                 st.success(f"✔ Porta {p} ({name}) chiusa")
@@ -387,3 +394,4 @@ if go and domain:
         st.warning("Livello di esposizione: *MEDIO*")
     else:
         st.success("Livello di esposizione: *BASSO*")
+
