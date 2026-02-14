@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import ssl
 import socket
+import ipaddress
 from datetime import datetime, timezone
 
 import dns.resolver
@@ -23,6 +24,27 @@ def normalize_domain(d: str) -> str:
     d = (d or "").strip().lower()
     d = d.replace("https://", "").replace("http://", "")
     return d.split("/")[0]
+
+def target_is_ip(value: str) -> bool:
+    try:
+        ipaddress.ip_address((value or "").strip())
+        return True
+    except ValueError:
+        return False
+
+def is_public_ip(value: str) -> bool:
+    try:
+        ip = ipaddress.ip_address((value or "").strip())
+        return not (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        )
+    except ValueError:
+        return False
 
 def apex_domain(hostname: str) -> str:
     ext = tldextract.extract(hostname)
@@ -101,7 +123,7 @@ if "advanced" not in st.session_state:
 # ------------------------------------------------
 # INPUT
 # ------------------------------------------------
-domain = st.text_input("Dominio (es: azienda.it)", value=st.session_state.domain_value)
+domain = st.text_input("Dominio o IP pubblico (es: azienda.it oppure 8.8.8.8)", value=st.session_state.domain_value)
 go = st.button("Analizza")
 
 # Se premi Analizza, memorizzo dominio e “blocco” l’analisi come attiva
@@ -111,19 +133,27 @@ if go and domain:
 
 # Se non ho ancora analizzato, fine qui (così non appaiono sezioni a caso in home)
 if not st.session_state.analyzed or not st.session_state.domain_value:
-    st.info("Inserisci un dominio e premi *Analizza*.")
+    st.info("Inserisci un dominio (o IP pubblico) e premi *Analizza*.")
     st.stop()
 
 # ------------------------------------------------
 # BLOCCO ANALISI (resta attivo anche dopo rerun)
 # ------------------------------------------------
 host = normalize_domain(st.session_state.domain_value)
+is_ip = target_is_ip(host)
+
+if is_ip and not is_public_ip(host):
+    st.error("IP non consentito: inserisci solo IP PUBBLICI (no privati/loopback/riservati).")
+    st.stop()
+
 root = apex_domain(host)
 
 st.markdown("---")
 st.subheader("Riepilogo")
-st.write(f"Host: {host}")
-st.write(f"Dominio principale (apex): {root}")
+st.write(f"Target: {host}")
+st.write(f"Tipo: {'IP pubblico' if is_ip else 'Dominio'}")
+if not is_ip:
+    st.write(f"Dominio principale (apex): {root}")
 
 # Variabili “safe default” per evitare errori a cascata
 final_url = None
@@ -149,11 +179,24 @@ header_list = [
 ]
 
 try:
-    final_url, status, headers = fetch_headers(host)
-    st.write(f"URL finale: {final_url}")
-    st.write(f"HTTP status: {status}")
+    if is_ip:
+        # Su IP l’HTTPS può fallire per mismatch certificato: facciamo HTTP best-effort
+        r = requests.get(
+            f"http://{host}",
+            timeout=8,
+            allow_redirects=True,
+            headers={"User-Agent": "SecurityQuickCheck/1.0"},
+        )
+        final_url, status, headers = r.url, r.status_code, r.headers
+        st.write(f"URL finale (HTTP): {final_url}")
+        st.write(f"HTTP status: {status}")
+        st.info("Nota: su IP la lettura header via HTTPS può fallire (certificato non associato all’IP).")
+    else:
+        final_url, status, headers = fetch_headers(host)
+        st.write(f"URL finale: {final_url}")
+        st.write(f"HTTP status: {status}")
 except Exception:
-    st.error("Impossibile leggere gli header via HTTPS (host non raggiungibile / errore SSL / redirect).")
+    st.error("Impossibile leggere gli header (host non raggiungibile / errore SSL / redirect).")
 
 for h in header_list:
     if h in headers:
@@ -170,18 +213,25 @@ st.caption(f"Punteggio headers: {header_score}/{len(header_list)}")
 st.markdown("## 2) SSL Certificate")
 
 try:
-    info = ssl_info(host)
-    if info["days_left"] is None:
-        st.warning("Non riesco a determinare la scadenza del certificato.")
-    elif info["days_left"] < 0:
-        st.error(f"Certificato SCADUTO ({info['days_left']} giorni).")
-    elif info["days_left"] < 30:
-        st.warning(f"Certificato in scadenza: {info['days_left']} giorni.")
+    if is_ip:
+        # Su IP: best-effort reachability 443 (no validazione hostname/cert)
+        if tcp_connect(host, 443, timeout=2.0):
+            st.warning("Porta 443 raggiungibile. Nota: su IP non validiamo certificato/hostname (best-effort).")
+        else:
+            st.warning("Porta 443 non raggiungibile (o filtrata).")
     else:
-        st.success(f"Certificato valido: scade tra {info['days_left']} giorni.")
+        info = ssl_info(host)
+        if info["days_left"] is None:
+            st.warning("Non riesco a determinare la scadenza del certificato.")
+        elif info["days_left"] < 0:
+            st.error(f"Certificato SCADUTO ({info['days_left']} giorni).")
+        elif info["days_left"] < 30:
+            st.warning(f"Certificato in scadenza: {info['days_left']} giorni.")
+        else:
+            st.success(f"Certificato valido: scade tra {info['days_left']} giorni.")
 
-    if info.get("expires"):
-        st.write(f"Scadenza: {info['expires'].strftime('%Y-%m-%d %H:%M UTC')}")
+        if info.get("expires"):
+            st.write(f"Scadenza: {info['expires'].strftime('%Y-%m-%d %H:%M UTC')}")
 except Exception:
     st.error("Impossibile verificare SSL (porta 443 non disponibile o handshake fallito).")
 
@@ -190,42 +240,50 @@ except Exception:
 # ------------------------------------------------
 st.markdown("## 3) Email Security (SPF / DMARC)")
 
-try:
-    spf = next((x for x in dns_txt(root) if x.lower().startswith("v=spf1")), None)
-    dmarc = next((x for x in dns_txt(f"_dmarc.{root}") if x.lower().startswith("v=dmarc1")), None)
-except Exception:
+if is_ip:
+    st.info("Per IP non esistono SPF/DMARC (sono record DNS del dominio).")
     spf, dmarc = None, None
-
-if spf:
-    st.success("✔ SPF presente")
-    st.code(spf)
 else:
-    st.warning("⚠ SPF assente (record TXT v=spf1 mancante)")
+    try:
+        spf = next((x for x in dns_txt(root) if x.lower().startswith("v=spf1")), None)
+        dmarc = next((x for x in dns_txt(f"_dmarc.{root}") if x.lower().startswith("v=dmarc1")), None)
+    except Exception:
+        spf, dmarc = None, None
 
-if dmarc:
-    st.success("✔ DMARC presente")
-    st.code(dmarc)
-else:
-    st.warning("⚠ DMARC assente (record TXT su _dmarc.<dominio> mancante)")
+    if spf:
+        st.success("✔ SPF presente")
+        st.code(spf)
+    else:
+        st.warning("⚠ SPF assente (record TXT v=spf1 mancante)")
+
+    if dmarc:
+        st.success("✔ DMARC presente")
+        st.code(dmarc)
+    else:
+        st.warning("⚠ DMARC assente (record TXT su _dmarc.<dominio> mancante)")
 
 # ------------------------------------------------
 # 4) DNS HARDENING (DNSSEC / CAA)
 # ------------------------------------------------
 st.markdown("## 4) DNS Hardening (DNSSEC / CAA)")
 
-dnssec = dnssec_enabled(root)
-caa = get_caa(root)
-
-if dnssec:
-    st.success("✔ DNSSEC: record DS trovato (best-effort: zona probabilmente firmata)")
+if is_ip:
+    st.info("Per IP non si applicano DNSSEC/CAA (valgono per il dominio/zone DNS).")
+    dnssec, caa = False, []
 else:
-    st.warning("⚠ DNSSEC: record DS non trovato (probabilmente non firmato)")
+    dnssec = dnssec_enabled(root)
+    caa = get_caa(root)
 
-if caa:
-    st.success("✔ CAA presente (limita chi può emettere certificati)")
-    st.code("\n".join(caa))
-else:
-    st.warning("⚠ CAA assente")
+    if dnssec:
+        st.success("✔ DNSSEC: record DS trovato (best-effort: zona probabilmente firmata)")
+    else:
+        st.warning("⚠ DNSSEC: record DS non trovato (probabilmente non firmato)")
+
+    if caa:
+        st.success("✔ CAA presente (limita chi può emettere certificati)")
+        st.code("\n".join(caa))
+    else:
+        st.warning("⚠ CAA assente")
 
 # ------------------------------------------------
 # 5) REPUTATION (SAFE)
@@ -308,45 +366,62 @@ st.markdown("## 9) Checklist sintetica")
 checks_ok = 0
 checks_total = 0
 
+# HTTPS reachable (solo se dominio; su IP abbiamo fatto HTTP)
 checks_total += 1
-if status in (200, 301, 302, 307, 308):
+if (not is_ip) and status in (200, 301, 302, 307, 308):
     st.success("✔ HTTPS raggiungibile")
     checks_ok += 1
+elif is_ip and status in (200, 301, 302, 307, 308):
+    st.success("✔ HTTP raggiungibile (IP)")
+    checks_ok += 1
 else:
-    st.warning("⚠ HTTPS non verificato / status non atteso")
+    st.warning("⚠ Raggiungibilità non verificata / status non atteso")
 
+# SSL valid (solo dominio)
 checks_total += 1
-if isinstance(info.get("days_left"), int) and info["days_left"] > 0:
+if (not is_ip) and isinstance(info.get("days_left"), int) and info["days_left"] > 0:
     st.success("✔ Certificato SSL valido")
     checks_ok += 1
+elif is_ip:
+    st.info("SSL su IP: non validato (best-effort).")
 else:
     st.warning("⚠ SSL non valido o non verificabile")
 
+# SPF / DMARC (solo dominio)
 checks_total += 1
-if spf:
+if not is_ip and spf:
     st.success("✔ SPF presente")
     checks_ok += 1
+elif is_ip:
+    st.info("SPF: N/A su IP")
 else:
     st.warning("⚠ SPF assente")
 
 checks_total += 1
-if dmarc:
+if not is_ip and dmarc:
     st.success("✔ DMARC presente")
     checks_ok += 1
+elif is_ip:
+    st.info("DMARC: N/A su IP")
 else:
     st.warning("⚠ DMARC assente")
 
+# DNSSEC / CAA (solo dominio)
 checks_total += 1
-if dnssec:
+if not is_ip and dnssec:
     st.success("✔ DNSSEC presente")
     checks_ok += 1
+elif is_ip:
+    st.info("DNSSEC: N/A su IP")
 else:
     st.warning("⚠ DNSSEC assente")
 
 checks_total += 1
-if caa:
+if not is_ip and caa:
     st.success("✔ CAA presente")
     checks_ok += 1
+elif is_ip:
+    st.info("CAA: N/A su IP")
 else:
     st.warning("⚠ CAA assente")
 
@@ -361,26 +436,35 @@ web = 0
 email_score = 0
 dns_score = 0
 
+# WEB
 if status in (200, 301, 302, 307, 308):
     web += 10
-if isinstance(info.get("days_left"), int) and info["days_left"] > 0:
+
+# SSL (solo dominio)
+if (not is_ip) and isinstance(info.get("days_left"), int) and info["days_left"] > 0:
     web += 10
+
+# Headers score
 web += min(20, header_score * 5)
 
-if spf:
-    email_score += 10
-if dmarc:
-    email_score += 15
-    dl = dmarc.lower()
-    if "p=quarantine" in dl:
-        email_score += 5
-    if "p=reject" in dl:
+# EMAIL (solo dominio)
+if not is_ip:
+    if spf:
         email_score += 10
+    if dmarc:
+        email_score += 15
+        dl = dmarc.lower()
+        if "p=quarantine" in dl:
+            email_score += 5
+        if "p=reject" in dl:
+            email_score += 10
 
-if dnssec:
-    dns_score += 10
-if caa:
-    dns_score += 10
+# DNS (solo dominio)
+if not is_ip:
+    if dnssec:
+        dns_score += 10
+    if caa:
+        dns_score += 10
 
 total = min(web + email_score + dns_score, 100)
 
