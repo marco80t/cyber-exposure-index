@@ -237,8 +237,7 @@ if go and domain:
     # ------------------------------------------------
     # 7) Exposure — Porte comuni (best-effort)
     # ------------------------------------------------
-    with section7:
-        st.markdown("## 7) Exposure — Porte comuni (best-effort)")
+            st.markdown("## 7) Exposure — Porte comuni (best-effort)")
     
         if not advanced:
             st.info("Attiva la modalità tecnica avanzata (punto 6) per visualizzare i controlli sulle porte.")
@@ -394,5 +393,6 @@ if go and domain:
         st.warning("Livello di esposizione: *MEDIO*")
     else:
         st.success("Livello di esposizione: *BASSO*")
+
 
 
