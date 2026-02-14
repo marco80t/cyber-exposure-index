@@ -72,9 +72,9 @@ def get_caa(domain):
     except:
         return []
 
-def dnssec_status(domain):
+def dnssec_enabled(domain):
     try:
-        answers = dns.resolver.resolve(domain, "DS")
+        dns.resolver.resolve(domain, "DS")
         return True
     except:
         return False
@@ -169,7 +169,7 @@ if go and domain:
     # ------------------------------------------------
     st.markdown("## 4) DNS Hardening")
 
-    dnssec = dnssec_status(root)
+    dnssec = dnssec_enabled(root)
     caa = get_caa(root)
 
     if dnssec:
@@ -189,7 +189,7 @@ if go and domain:
     st.info("Analisi esclusivamente su configurazione tecnica pubblica. Nessuna interrogazione dark web.")
 
     # ------------------------------------------------
-    # 6) MODALITÀ TECNICA (con autorizzazione)
+    # 6) MODALITÀ TECNICA (solo con autorizzazione)
     # ------------------------------------------------
     advanced = st.checkbox("Modalità tecnica avanzata (richiede autorizzazione del proprietario)")
 
