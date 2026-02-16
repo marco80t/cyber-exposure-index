@@ -4,7 +4,6 @@ import ssl
 import socket
 import ipaddress
 from datetime import datetime, timezone
-from urllib.parse import urlparse
 import dns.resolver
 import tldextract
 
@@ -14,7 +13,7 @@ import tldextract
 st.set_page_config(page_title="Security Quick Check Pro", page_icon="🛡️", layout="wide")
 
 # ============================================================
-# MATRIX UI / CSS (FUTURISTICO)
+# MATRIX UI / CSS (FUTURISTICO + FIX VISIBILITÀ)
 # ============================================================
 def apply_matrix_style():
     st.markdown(
@@ -49,6 +48,11 @@ def apply_matrix_style():
         /* Porta avanti il contenuto */
         section.main > div { position: relative; z-index: 1; }
 
+        /* Testo generale più leggibile */
+        html, body, [class*="st-"], .stMarkdown, .stText, .stCaption, .stWrite {
+            color: rgba(235,255,245,0.92) !important;
+        }
+
         /* Titoli neon */
         h1, h2, h3, h4 {
             color: #00ff88 !important;
@@ -56,30 +60,53 @@ def apply_matrix_style():
             letter-spacing: 0.2px;
         }
 
-        /* Card glass */
+        /* Card glass (più visibile) */
         .glass {
             padding: 16px 18px;
             border-radius: 14px;
-            border: 1px solid rgba(0,255,136,0.20);
-            background: rgba(255,255,255,0.03);
-            box-shadow: 0 0 30px rgba(0,255,136,0.07);
-            backdrop-filter: blur(8px);
+            border: 1px solid rgba(0,255,136,0.28);
+            background: rgba(10, 18, 14, 0.55);
+            box-shadow: 0 0 30px rgba(0,255,136,0.10);
+            backdrop-filter: blur(10px);
         }
+        .glass * { color: rgba(235,255,245,0.94) !important; }
 
         /* Metric box */
-        .stMetric {
-            background: rgba(0,255,136,0.05) !important;
-            border: 1px solid rgba(0,255,136,0.22) !important;
+        [data-testid="stMetric"] {
+            background: rgba(10, 18, 14, 0.55) !important;
+            border: 1px solid rgba(0,255,136,0.28) !important;
             border-radius: 14px !important;
             padding: 12px !important;
+        }
+
+        /* Input */
+        .stTextInput label { color: rgba(235,255,245,0.85) !important; }
+        .stTextInput input {
+            color: rgba(235,255,245,0.95) !important;
+            border-radius: 10px !important;
+            border: 1px solid rgba(0,255,136,0.28) !important;
+            background: rgba(10, 18, 14, 0.55) !important;
+        }
+
+        /* Tabs */
+        button[data-baseweb="tab"] {
+            border-radius: 999px !important;
+            margin-right: 8px;
+            border: 1px solid rgba(0,255,136,0.22) !important;
+            background: rgba(10, 18, 14, 0.35) !important;
+            color: rgba(235,255,245,0.90) !important;
+        }
+        button[data-baseweb="tab"][aria-selected="true"] {
+            background: rgba(0,255,136,0.12) !important;
+            box-shadow: 0 0 18px rgba(0,255,136,0.20) !important;
         }
 
         /* Bottoni */
         .stButton>button {
             background: linear-gradient(135deg, #00ff88, #00cc6a);
-            color: #06120b;
+            color: #06120b !important;
             border-radius: 10px;
-            font-weight: 800;
+            font-weight: 900;
             border: 0;
             box-shadow: 0 0 18px rgba(0,255,136,0.22);
         }
@@ -88,28 +115,12 @@ def apply_matrix_style():
             box-shadow: 0 0 26px rgba(0,255,136,0.32);
         }
 
-        /* Input */
-        .stTextInput input {
-            border-radius: 10px !important;
-            border: 1px solid rgba(0,255,136,0.25) !important;
-            background: rgba(255,255,255,0.03) !important;
-        }
-
-        /* Tabs */
-        button[data-baseweb="tab"] {
-            border-radius: 999px !important;
-            margin-right: 8px;
-            border: 1px solid rgba(0,255,136,0.15) !important;
-            background: rgba(255,255,255,0.02) !important;
-        }
-
         /* Link */
         a { color: #00ff88 !important; }
 
-        /* Piccolo */
         .small { opacity: 0.85; font-size: 0.92rem; }
 
-        /* Radar progress (circolare finto con CSS) */
+        /* Radar */
         .radar {
             width: 180px; height: 180px;
             border-radius: 999px;
@@ -130,10 +141,9 @@ def apply_matrix_style():
         .radar span{
             font-size: 2rem;
             font-weight: 900;
-            color:#00ff88;
+            color:#00ff88 !important;
             text-shadow: 0 0 10px rgba(0,255,136,0.45);
         }
-
         </style>
         """,
         unsafe_allow_html=True,
@@ -160,11 +170,11 @@ with st.sidebar:
     st.markdown("### Note legali")
     st.markdown(
         "<div class='small'>"
-        "• I controlli sono basati su informazioni pubbliche.<br>"
-        "• La verifica porte è opzionale e va usata <b>solo con autorizzazione</b> del proprietario.<br>"
+        "• Controlli basati su informazioni pubbliche.<br>"
+        "• Modalità porte solo con autorizzazione del proprietario.<br>"
         "• Nessun brute-force, nessun accesso, nessun exploit."
         "</div>",
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
     st.markdown("---")
     show_geo = st.toggle("Mostra Geo/ASN (opzionale)", value=False)
@@ -185,8 +195,7 @@ def is_ip_target(value: str) -> bool:
 def normalize_target(v: str) -> str:
     v = (v or "").strip().lower()
     v = v.replace("https://", "").replace("http://", "")
-    v = v.split("/")[0]
-    return v
+    return v.split("/")[0]
 
 def apex_domain(hostname: str) -> str:
     ext = tldextract.extract(hostname)
@@ -254,23 +263,10 @@ def get_geo_info(ip: str):
     except Exception:
         return None
 
-# WHOIS via RDAP (più “moderno” e spesso meglio del WHOIS classico)
-def rdap_domain(domain: str):
-    """
-    RDAP pubblico. Nota: spesso i dati registrant sono redatti (GDPR).
-    """
-    try:
-        r = requests.get(f"https://rdap.org/domain/{domain}", timeout=8)
-        if r.status_code != 200:
-            return None
-        return r.json()
-    except Exception:
-        return None
-
 def rdap_extract_dates(rdap_json: dict):
     created = None
-    expires = None
     updated = None
+    expires = None
     for ev in rdap_json.get("events", []):
         action = (ev.get("eventAction") or "").lower()
         date = ev.get("eventDate")
@@ -284,14 +280,70 @@ def rdap_extract_dates(rdap_json: dict):
             updated = date
     return created, updated, expires
 
-def best_effort_dkim(root: str, selector: str = ""):
-    # se non hai selector, proviamo alcuni comuni
-    selectors = []
-    if selector.strip():
-        selectors = [selector.strip()]
-    else:
-        selectors = ["default", "selector1", "selector2", "google", "k1", "mail", "s1", "s2"]
+def parse_iso_date(d: str):
+    if not d:
+        return None
+    try:
+        # gestisce 2026-01-01T00:00:00Z e simili
+        return datetime.fromisoformat(d.replace("Z", "+00:00"))
+    except Exception:
+        return None
 
+def days_until(dt: datetime):
+    if not dt:
+        return None
+    now = datetime.now(timezone.utc)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return (dt - now).days
+
+def rdap_request(url: str):
+    try:
+        r = requests.get(url, timeout=8, headers={"User-Agent": "SecurityQuickCheckPro/1.0"})
+        if r.status_code == 200 and r.headers.get("content-type", "").lower().startswith("application/"):
+            return r.json()
+        return None
+    except Exception:
+        return None
+
+def rdap_domain_best_effort(domain: str):
+    """
+    Prova più strade:
+    1) RDAP specifico per .it (rdap.nic.it)
+    2) rdap.org (a volte bloccato/instabile)
+    3) bootstrap IANA (dns.json) per trovare l'endpoint del TLD
+    """
+    domain = domain.strip().lower()
+    tld = domain.split(".")[-1]
+
+    # 1) .it -> NIC.it
+    if tld == "it":
+        data = rdap_request(f"https://rdap.nic.it/domain/{domain}")
+        if data:
+            return data, "rdap.nic.it"
+
+    # 2) rdap.org
+    data = rdap_request(f"https://rdap.org/domain/{domain}")
+    if data:
+        return data, "rdap.org"
+
+    # 3) IANA bootstrap
+    bootstrap = rdap_request("https://data.iana.org/rdap/dns.json")
+    if bootstrap:
+        services = bootstrap.get("services", [])
+        for item in services:
+            tlds, urls = item[0], item[1]
+            if tld in [x.strip(".").lower() for x in tlds]:
+                for base in urls:
+                    base = base.rstrip("/")
+                    data = rdap_request(f"{base}/domain/{domain}")
+                    if data:
+                        return data, base
+
+    return None, None
+
+def best_effort_dkim(root: str, selector: str = ""):
+    selectors = [selector.strip()] if selector.strip() else ["default", "selector1", "selector2", "google", "k1", "mail", "s1", "s2"]
     found = []
     for s in selectors:
         name = f"{s}._domainkey.{root}"
@@ -328,7 +380,11 @@ st.write("")
 # ============================================================
 c_in1, c_in2 = st.columns([5, 1])
 with c_in1:
-    target_input = st.text_input("Inserisci Dominio o IP pubblico", value=st.session_state.target_value, placeholder="es: tmconsulenza.it oppure 1.2.3.4")
+    target_input = st.text_input(
+        "Inserisci Dominio o IP pubblico",
+        value=st.session_state.target_value,
+        placeholder="es: tmconsulenza.it oppure 1.2.3.4",
+    )
 with c_in2:
     go = st.button("Analizza", use_container_width=True)
 
@@ -358,7 +414,7 @@ else:
         resolved_ip = a_records[0]
 
 # ============================================================
-# SUMMARY CARD
+# SUMMARY CARD (FIX VISIBILITÀ)
 # ============================================================
 st.markdown("### Riepilogo")
 sumc1, sumc2, sumc3 = st.columns([2, 2, 2])
@@ -405,6 +461,7 @@ dkim_found = []
 
 dnssec = False
 caa = []
+header_score = 0
 
 # ============================================================
 # TAB WEB
@@ -444,8 +501,7 @@ with tab_web:
                 st.warning("Possibile **information leakage**: " + " | ".join(leak))
             else:
                 st.success("Nessun header tipico di leakage rilevato.")
-
-        except Exception as e:
+        except Exception:
             st.error("Impossibile analizzare via HTTPS (host non raggiungibile / TLS / redirect).")
             header_score = 0
 
@@ -533,14 +589,14 @@ with tab_email:
         dkim_found = best_effort_dkim(root, dkim_selector)
         if dkim_found:
             st.success(f"✔ DKIM trovato ({len(dkim_found)} record)")
-            for sel, rec in dkim_found[:5]:
+            for sel, rec in dkim_found[:6]:
                 st.write(f"Selector: **{sel}**")
                 st.code(rec)
-            if len(dkim_found) > 5:
-                st.info("Altri record DKIM trovati (troncati in output).")
+            if len(dkim_found) > 6:
+                st.info("Altri record DKIM trovati (output troncato).")
         else:
             st.info("DKIM non rilevato (può essere perché il selector è diverso).")
-            st.caption("Suggerimento: se sai il selector del provider (es. Google: selector1/selector2) inseriscilo in sidebar.")
+            st.caption("Suggerimento: se sai il selector del provider, inseriscilo in sidebar.")
 
 # ============================================================
 # TAB DNS
@@ -564,51 +620,45 @@ with tab_dns:
         else:
             st.warning("⚠ CAA assente")
 
-        st.markdown("---")
-        st.markdown("### SaaS / TXT footprint (soft)")
-        txts = dns_txt(root)
-        hints = []
-        sigs = {
-            "google-site-verification": "Google (verification)",
-            "ms=": "Microsoft (verification)",
-            "atlassian-domain-verification": "Atlassian",
-            "v=spf1": "Email (SPF)",
-            "stripe-verification": "Stripe",
-        }
-        for t in txts:
-            tl = t.lower()
-            for k, v in sigs.items():
-                if k in tl:
-                    hints.append(v)
-        hints = sorted(list(set(hints)))
-        if hints:
-            st.info("Possibili servizi rilevati: " + ", ".join(hints))
-        else:
-            st.caption("Nessuna impronta comune trovata nei TXT (ok).")
-
 # ============================================================
-# TAB WHOIS/RDAP
+# TAB WHOIS/RDAP (FIX: fallback .it)
 # ============================================================
 with tab_whois:
     st.markdown("## WHOIS / RDAP (best-effort)")
     if is_ip:
         st.info("WHOIS dominio non applicabile a un IP qui (servirebbe WHOIS ASN/RIR separato).")
     else:
-        rd = rdap_domain(root)
+        rd, source = rdap_domain_best_effort(root)
         if not rd:
-            st.warning("RDAP non disponibile o non risponde per questo dominio.")
+            st.warning("RDAP non disponibile o non risponde per questo dominio (best-effort).")
         else:
             created, updated, expires = rdap_extract_dates(rd)
-            registrar = rd.get("registrarName") or rd.get("entities", [{}])[0].get("vcardArray", ["", []])
+
+            d_created = parse_iso_date(created)
+            d_updated = parse_iso_date(updated)
+            d_expires = parse_iso_date(expires)
+            left = days_until(d_expires) if d_expires else None
+
+            st.success(f"RDAP OK (fonte: {source})")
 
             st.markdown("### Dati principali")
-            cA, cB, cC = st.columns(3)
+            cA, cB, cC, cD = st.columns(4)
             with cA:
                 st.metric("Creato", (created or "N/D")[:10])
             with cB:
                 st.metric("Aggiornato", (updated or "N/D")[:10])
             with cC:
                 st.metric("Scadenza", (expires or "N/D")[:10])
+            with cD:
+                st.metric("Giorni alla scadenza", str(left) if left is not None else "N/D")
+
+            if left is not None:
+                if left < 0:
+                    st.error("⚠ Dominio risulta SCADUTO (o data RDAP incoerente).")
+                elif left < 30:
+                    st.warning("⚠ Dominio in scadenza < 30 giorni.")
+                elif left < 90:
+                    st.info("ℹ️ Dominio in scadenza < 90 giorni.")
 
             st.markdown("### Registrar / Status / Nameserver")
             reg_name = rd.get("registrarName") or "N/D"
@@ -618,40 +668,25 @@ with tab_whois:
             if statuses:
                 st.write("**Status:**")
                 st.code("\n".join(statuses))
-            else:
-                st.caption("Status non disponibili.")
 
             ns = [n.get("ldhName") for n in rd.get("nameservers", []) if n.get("ldhName")]
             if ns:
                 st.write("**Nameserver:**")
                 st.code("\n".join(ns))
-            else:
-                st.caption("Nameserver non disponibili.")
 
             st.markdown("---")
-            st.caption("Intestatario/registrant: spesso **redatto** (GDPR). Se il registry lo fornisce, apparirà nei dati RDAP.")
-            # Mostra solo un minimo (senza spammare)
-            ent = rd.get("entities", [])
-            public_roles = []
-            for e in ent:
-                roles = e.get("roles", [])
-                if roles:
-                    public_roles.extend(roles)
-            if public_roles:
-                st.write("Ruoli presenti nel RDAP:")
-                st.code(", ".join(sorted(set(public_roles))))
+            st.caption("Intestatario/registrant: spesso **redatto** (GDPR).")
 
 # ============================================================
-# TAB SCORE
+# TAB SCORE (normalizzato)
 # ============================================================
 with tab_score:
     st.markdown("## Cyber Exposure Index (best-effort)")
-    # Score che NON penalizza se non hai posta o non hai sito
-    # Logica: se un “modulo” non è applicabile => non pesa sul totale.
+
     score = 0
     weight_total = 0
 
-    # Web module (solo se dominio)
+    # Web (solo dominio)
     web_w = 40
     if not is_ip:
         weight_total += web_w
@@ -660,20 +695,10 @@ with tab_score:
             web_points += 10
         if ssl_data and isinstance(ssl_data.get("days_left"), int) and ssl_data["days_left"] > 0:
             web_points += 10
-        # headers: fino a 20
-        try:
-            # header_score definito nella tab web (se errore, ricavo qui)
-            sec_headers = ["Strict-Transport-Security", "Content-Security-Policy", "X-Frame-Options", "X-Content-Type-Options", "Referrer-Policy"]
-            hs = 0
-            for h in sec_headers:
-                if h in headers:
-                    hs += 1
-            web_points += min(20, hs * 4)  # 5 headers -> max 20
-        except Exception:
-            pass
+        web_points += min(20, header_score * 4)  # 5 header -> max 20
         score += min(web_w, web_points)
 
-    # Email module (solo se hai MX o se trovi SPF/DMARC)
+    # Email (solo se applicabile)
     email_w = 35
     email_applicable = (not is_ip) and (bool(mx) or bool(spf) or bool(dmarc) or bool(dkim_found))
     if email_applicable:
@@ -688,7 +713,7 @@ with tab_score:
         if dkim_found: ep += 10
         score += min(email_w, ep)
 
-    # DNS module (solo se dominio)
+    # DNS (solo dominio)
     dns_w = 25
     if not is_ip:
         weight_total += dns_w
@@ -703,14 +728,13 @@ with tab_score:
 
     final = int(round((score / weight_total) * 100))
 
-    # Radar
     st.markdown(
         f"""
         <div class="glass" style="display:flex; gap:22px; align-items:center; justify-content:space-between; flex-wrap:wrap;">
           <div>
             <div class="small">Punteggio normalizzato sui moduli applicabili</div>
             <h2 style="margin:6px 0 0 0;">{final}/100</h2>
-            <div class="small">Web/Email/DNS: pesano solo se applicabili (niente “falsi allarmi” se non hai posta o sito).</div>
+            <div class="small">Non penalizza se il dominio non ha posta o sito (moduli non applicabili).</div>
           </div>
           <div class="radar" style="--p: {final}%;">
             <span>{final}</span>
@@ -725,7 +749,7 @@ with tab_score:
     with c1:
         st.metric("Score grezzo", f"{int(score)}/{weight_total}")
     with c2:
-        st.metric("Moduli attivi", f"{int((weight_total>0)) + int(email_applicable) + int((not is_ip))}")
+        st.metric("Email applicabile", "Sì" if email_applicable else "No")
     with c3:
         if final < 40:
             st.error("Livello: ALTO")
