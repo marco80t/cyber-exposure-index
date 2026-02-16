@@ -12,6 +12,177 @@ import tldextract
 # CONFIG / UI
 # ==============================================================
 st.set_page_config(page_title="Security Quick Check Pro", page_icon="🛡️", layout="wide")
+import base64
+from pathlib import Path
+import streamlit as st
+
+def inject_matrix_ui(bg_path: str = "assets/bg.png"):
+    # Carico bg.png e lo embeddo in CSS (così funziona anche su Streamlit Cloud)
+    bg_css = ""
+    p = Path(bg_path)
+    if p.exists():
+        b64 = base64.b64encode(p.read_bytes()).decode("utf-8")
+        ext = p.suffix.lower().replace(".", "")
+        mime = "png" if ext == "png" else "jpeg"
+        bg_css = f"""
+        .stApp {{
+          background-image:
+            radial-gradient(1200px 700px at 20% 10%, rgba(0,255,140,0.20), transparent 55%),
+            radial-gradient(900px 650px at 80% 20%, rgba(0,170,90,0.16), transparent 52%),
+            linear-gradient(180deg, #05080F, #070B12),
+            url("data:image/{mime};base64,{b64}");
+          background-size: cover;
+          background-position: center;
+          background-attachment: fixed;
+        }}
+        """
+    else:
+        # fallback se bg non c'è
+        bg_css = """
+        .stApp{
+          background:
+            radial-gradient(1200px 700px at 20% 10%, rgba(0,255,140,0.18), transparent 55%),
+            radial-gradient(900px 650px at 80% 20%, rgba(0,170,90,0.14), transparent 52%),
+            linear-gradient(180deg, #05080F, #070B12);
+        }
+        """
+
+    st.markdown(f"""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Orbitron:wght@500;700&display=swap');
+
+    :root{{
+      --bg1:#05080F;
+      --bg2:#070B12;
+      --card: rgba(255,255,255,0.06);
+      --card2: rgba(255,255,255,0.10);
+      --stroke: rgba(0,255,140,0.18);
+      --text: rgba(255,255,255,0.92);
+      --muted: rgba(255,255,255,0.68);
+      --accent: #00FF8C;      /* Matrix green */
+      --accent2:#00AA5A;      /* deep green */
+      --danger:#ff4d6d;
+      --warn:#f7b955;
+    }}
+
+    {bg_css}
+
+    /* generale */
+    .stApp {{
+      color: var(--text);
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    }}
+    .block-container {{ padding-top: 1.2rem; }}
+
+    /* Sidebar */
+    section[data-testid="stSidebar"] {{
+      background: linear-gradient(180deg, rgba(5,10,18,0.88), rgba(5,10,18,0.58));
+      border-right: 1px solid rgba(0,255,140,0.16);
+      backdrop-filter: blur(10px);
+    }}
+    section[data-testid="stSidebar"] * {{
+      color: var(--text);
+    }}
+
+    /* Titoli “tech” */
+    h1, h2, h3 {{
+      font-family: Orbitron, Inter, sans-serif;
+      letter-spacing: 0.4px;
+    }}
+
+    /* Inputs */
+    .stTextInput input, .stTextArea textarea {{
+      background: rgba(255,255,255,0.06) !important;
+      border: 1px solid rgba(0,255,140,0.18) !important;
+      border-radius: 12px !important;
+      color: var(--text) !important;
+    }}
+
+    /* Button */
+    .stButton button {{
+      border-radius: 12px !important;
+      border: 1px solid rgba(0,255,140,0.35) !important;
+      background: linear-gradient(90deg, rgba(0,255,140,0.20), rgba(0,170,90,0.18)) !important;
+      color: var(--text) !important;
+      box-shadow: 0 0 0 rgba(0,255,140,0.0);
+      transition: all .2s ease;
+    }}
+    .stButton button:hover {{
+      box-shadow: 0 0 22px rgba(0,255,140,0.20);
+      transform: translateY(-1px);
+    }}
+
+    /* Tabs */
+    button[data-baseweb="tab"] {{
+      background: rgba(255,255,255,0.04) !important;
+      border: 1px solid rgba(0,255,140,0.16) !important;
+      border-radius: 999px !important;
+      margin-right: 8px !important;
+      padding: 10px 14px !important;
+    }}
+    button[data-baseweb="tab"][aria-selected="true"] {{
+      border: 1px solid rgba(0,255,140,0.38) !important;
+      box-shadow: 0 0 18px rgba(0,255,140,0.14) !important;
+    }}
+
+    /* Metric */
+    [data-testid="stMetric"] {{
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(0,255,140,0.16);
+      border-radius: 16px;
+      padding: 14px 16px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 10px 28px rgba(0,0,0,0.20);
+    }}
+
+    /* Alert box */
+    div[data-testid="stAlert"] {{
+      border-radius: 14px !important;
+      border: 1px solid rgba(0,255,140,0.14) !important;
+      background: rgba(255,255,255,0.06) !important;
+      backdrop-filter: blur(10px);
+    }}
+
+    /* Card helper */
+    .neo-card {{
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(0,255,140,0.16);
+      border-radius: 16px;
+      padding: 16px 18px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 10px 35px rgba(0,0,0,0.22);
+    }}
+    .neo-title {{
+      font-family: Orbitron, Inter, sans-serif;
+      letter-spacing: .4px;
+      font-size: 1.05rem;
+      margin: 0 0 8px 0;
+    }}
+    .neo-muted {{ color: var(--muted); font-size: 0.92rem; }}
+    .badge {{
+      display:inline-block; padding:2px 10px; border-radius:999px;
+      border:1px solid rgba(0,255,140,0.22);
+      font-size:0.85rem; opacity:0.92;
+      background: rgba(0,255,140,0.06);
+    }}
+    .glow {{
+      text-shadow: 0 0 14px rgba(0,255,140,0.22);
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
+def hero_matrix(title: str, subtitle: str, badge_text: str = "PASSIVE / BEST-EFFORT"):
+    st.markdown(f"""
+    <div class="neo-card">
+      <div class="neo-title glow">{title} <span class="badge">{badge_text}</span></div>
+      <div class="neo-muted">{subtitle}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+# USO:
+# inject_matrix_ui("assets/bg.png")
+# hero_matrix("Security Quick Check Pro", "Analisi su dati pubblici (HTTP / DNS / SSL). Modalità tecnica solo con autorizzazione.")
+
 
 UA = {"User-Agent": "SecurityQuickCheckPro/1.0"}
 
@@ -678,3 +849,4 @@ with tab_score:
     report_text = "\n".join(report_lines)
 
     st.download_button("Scarica Report Rapido", report_text, file_name="security_quick_check_report.txt")
+
