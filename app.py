@@ -6,20 +6,23 @@ import ipaddress
 from datetime import datetime, timezone
 import dns.resolver
 import tldextract
+import re
 
 # ============================================================
 # CONFIG
 # ============================================================
 st.set_page_config(page_title="Security Quick Check Pro", page_icon="🛡️", layout="wide")
 
+CONTACT_SITE = "tmconsulenza.it"
+CONTACT_MAIL = "info@tmconsulenza.it"
+
 # ============================================================
-# MATRIX UI / CSS (FIX SIDEBAR + CONTRASTO)
+# MATRIX UI / CSS (SIDEBAR LEGGIBILE + CONTRASTO)
 # ============================================================
 def apply_matrix_style():
     st.markdown(
         """
         <style>
-        /* ---------- APP BACKGROUND ---------- */
         .stApp {
             background:
                 radial-gradient(circle at 20% 10%, rgba(0,255,136,0.12) 0%, transparent 40%),
@@ -44,28 +47,22 @@ def apply_matrix_style():
         }
         section.main > div { position: relative; z-index: 1; }
 
-        /* ---------- SIDEBAR (FIX VISIBILITÀ) ---------- */
+        /* SIDEBAR */
         [data-testid="stSidebar"] {
             background: rgba(8, 14, 11, 0.96) !important;
             border-right: 1px solid rgba(0,255,136,0.22);
         }
-        [data-testid="stSidebar"] * {
-            color: rgba(235,255,245,0.92) !important;
-        }
-        [data-testid="stSidebar"] a {
-            color: #00ff88 !important;
-        }
+        [data-testid="stSidebar"] * { color: rgba(235,255,245,0.92) !important; }
+        [data-testid="stSidebar"] a { color: #00ff88 !important; }
         [data-testid="stSidebar"] .stMarkdown h1,
         [data-testid="stSidebar"] .stMarkdown h2,
         [data-testid="stSidebar"] .stMarkdown h3 {
             color: #00ff88 !important;
             text-shadow: 0 0 10px rgba(0,255,136,0.45);
         }
-        [data-testid="stSidebar"] hr {
-            border-color: rgba(0,255,136,0.18) !important;
-        }
+        [data-testid="stSidebar"] hr { border-color: rgba(0,255,136,0.18) !important; }
 
-        /* ---------- GLOBAL TEXT ---------- */
+        /* GLOBAL TEXT */
         html, body, [class*="st-"], .stMarkdown, .stText, .stCaption, .stWrite {
             color: rgba(235,255,245,0.92) !important;
         }
@@ -75,7 +72,7 @@ def apply_matrix_style():
         }
         .small { opacity: 0.85; font-size: 0.92rem; }
 
-        /* ---------- GLASS CARDS ---------- */
+        /* GLASS */
         .glass {
             padding: 16px 18px;
             border-radius: 14px;
@@ -86,7 +83,7 @@ def apply_matrix_style():
         }
         .glass * { color: rgba(235,255,245,0.94) !important; }
 
-        /* ---------- METRICS ---------- */
+        /* METRICS */
         [data-testid="stMetric"] {
             background: rgba(10, 18, 14, 0.58) !important;
             border: 1px solid rgba(0,255,136,0.28) !important;
@@ -94,7 +91,7 @@ def apply_matrix_style():
             padding: 12px !important;
         }
 
-        /* ---------- INPUTS ---------- */
+        /* INPUTS */
         .stTextInput label { color: rgba(235,255,245,0.85) !important; }
         .stTextInput input {
             color: rgba(235,255,245,0.95) !important;
@@ -103,7 +100,7 @@ def apply_matrix_style():
             background: rgba(10, 18, 14, 0.58) !important;
         }
 
-        /* ---------- TABS ---------- */
+        /* TABS */
         button[data-baseweb="tab"] {
             border-radius: 999px !important;
             margin-right: 8px;
@@ -116,7 +113,7 @@ def apply_matrix_style():
             box-shadow: 0 0 18px rgba(0,255,136,0.20) !important;
         }
 
-        /* ---------- BUTTONS ---------- */
+        /* BUTTONS */
         .stButton>button {
             background: linear-gradient(135deg, #00ff88, #00cc6a);
             color: #06120b !important;
@@ -130,7 +127,7 @@ def apply_matrix_style():
             box-shadow: 0 0 26px rgba(0,255,136,0.32);
         }
 
-        /* ---------- RADAR ---------- */
+        /* RADAR */
         .radar {
             width: 180px; height: 180px;
             border-radius: 999px;
@@ -154,6 +151,17 @@ def apply_matrix_style():
             color:#00ff88 !important;
             text-shadow: 0 0 10px rgba(0,255,136,0.45);
         }
+
+        /* REMEDIATION CARDS */
+        .fix-card {
+            padding: 14px 16px;
+            border-radius: 14px;
+            border: 1px solid rgba(0,255,136,0.22);
+            background: rgba(10, 18, 14, 0.52);
+            margin-bottom: 12px;
+        }
+        .fix-title { font-weight: 900; color: #00ff88; }
+        .fix-meta { opacity: 0.85; font-size: 0.90rem; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -216,17 +224,14 @@ def ssl_info(host: str):
         with ctx.wrap_socket(sock, server_hostname=host) as ssock:
             cert = ssock.getpeercert()
             tls_ver = ssock.version()
-
     not_after = cert.get("notAfter")
     expires = None
     days_left = None
     if not_after:
         expires = datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=timezone.utc)
         days_left = (expires - datetime.now(timezone.utc)).days
-
     issuer = ", ".join("=".join(x) for item in cert.get("issuer", []) for x in item) if cert.get("issuer") else "N/D"
     san = [v for t, v in cert.get("subjectAltName", []) if t.lower() == "dns"]
-
     return {"expires": expires, "days_left": days_left, "issuer": issuer, "tls": tls_ver, "san": san}
 
 def tcp_connect(host: str, port: int, timeout=1.2) -> bool:
@@ -235,124 +240,6 @@ def tcp_connect(host: str, port: int, timeout=1.2) -> bool:
             return True
     except Exception:
         return False
-
-def get_geo_info(ip: str):
-    try:
-        return requests.get(f"https://ipapi.co/{ip}/json/", timeout=5).json()
-    except Exception:
-        return None
-
-# ---------------- RDAP / WHOIS (best-effort) ----------------
-def rdap_request_json(url: str):
-    """Prova a ottenere JSON RDAP. Ritorna dict o None."""
-    try:
-        r = requests.get(url, timeout=8, headers={"User-Agent": "SecurityQuickCheckPro/1.0"})
-        if r.status_code == 200:
-            ct = (r.headers.get("content-type") or "").lower()
-            if "json" in ct or ct.startswith("application/"):
-                return r.json()
-        return None
-    except Exception:
-        return None
-
-def rdap_request_via_proxy(url: str):
-    """
-    Fallback best-effort: usa r.jina.ai per aggirare blocchi di rete.
-    Non sempre funziona, ma spesso sì su Streamlit Cloud.
-    """
-    try:
-        prox = "https://r.jina.ai/http://"+url.replace("https://", "").replace("http://", "")
-        r = requests.get(prox, timeout=10, headers={"User-Agent": "SecurityQuickCheckPro/1.0"})
-        if r.status_code != 200:
-            return None
-        txt = r.text.strip()
-        # r.jina.ai spesso restituisce il JSON “pulito” come testo
-        return requests.models.complexjson.loads(txt)
-    except Exception:
-        return None
-
-def rdap_extract_dates(rdap_json: dict):
-    created = None
-    updated = None
-    expires = None
-    for ev in rdap_json.get("events", []):
-        action = (ev.get("eventAction") or "").lower()
-        date = ev.get("eventDate")
-        if not date:
-            continue
-        if "registration" in action:
-            created = date
-        elif "expiration" in action:
-            expires = date
-        elif "last changed" in action or "last update" in action:
-            updated = date
-    return created, updated, expires
-
-def parse_iso_date(d: str):
-    if not d:
-        return None
-    try:
-        return datetime.fromisoformat(d.replace("Z", "+00:00"))
-    except Exception:
-        return None
-
-def days_until(dt: datetime):
-    if not dt:
-        return None
-    now = datetime.now(timezone.utc)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return (dt - now).days
-
-def rdap_domain_best_effort(domain: str):
-    """
-    Ordine:
-    1) .it -> rdap.nic.it
-    2) rdap.org
-    3) bootstrap IANA -> endpoint tld
-    4) proxy (r.jina.ai) su rdap.nic.it e rdap.org (best-effort)
-    """
-    domain = domain.strip().lower()
-    tld = domain.split(".")[-1]
-
-    # 1) .it
-    if tld == "it":
-        url = f"https://rdap.nic.it/domain/{domain}"
-        data = rdap_request_json(url)
-        if data:
-            return data, "rdap.nic.it"
-        # proxy fallback
-        data = rdap_request_via_proxy(url)
-        if data:
-            return data, "rdap.nic.it (proxy)"
-
-    # 2) rdap.org
-    url = f"https://rdap.org/domain/{domain}"
-    data = rdap_request_json(url)
-    if data:
-        return data, "rdap.org"
-    data = rdap_request_via_proxy(url)
-    if data:
-        return data, "rdap.org (proxy)"
-
-    # 3) IANA bootstrap
-    boot = rdap_request_json("https://data.iana.org/rdap/dns.json")
-    if boot:
-        services = boot.get("services", [])
-        for item in services:
-            tlds, urls = item[0], item[1]
-            if tld in [x.strip(".").lower() for x in tlds]:
-                for base in urls:
-                    base = base.rstrip("/")
-                    url = f"{base}/domain/{domain}"
-                    data = rdap_request_json(url)
-                    if data:
-                        return data, base
-                    data = rdap_request_via_proxy(url)
-                    if data:
-                        return data, f"{base} (proxy)"
-
-    return None, None
 
 def best_effort_dkim(root: str, selector: str = ""):
     selectors = [selector.strip()] if selector.strip() else ["default", "selector1", "selector2", "google", "k1", "mail", "s1", "s2"]
@@ -364,6 +251,145 @@ def best_effort_dkim(root: str, selector: str = ""):
             if "v=dkim1" in t.lower():
                 found.append((s, t))
     return found
+
+# ============================================================
+# CVE (BEST-EFFORT) via NVD keyword search
+# ============================================================
+def extract_version_tokens(headers: dict) -> list:
+    """
+    Estrae candidati "prodotto/versione" da Server e X-Powered-By.
+    Esempi: "nginx/1.18.0", "Apache/2.4.49", "PHP/8.1.2"
+    """
+    tokens = []
+    for k in ["Server", "X-Powered-By"]:
+        v = headers.get(k)
+        if not v:
+            continue
+        # prendi pattern tipo word/1.2.3
+        for m in re.findall(r"([A-Za-z][A-Za-z0-9\-\_]+)\/(\d+(?:\.\d+){1,3})", v):
+            prod, ver = m
+            tokens.append(f"{prod} {ver}")
+    # dedup
+    out = []
+    for t in tokens:
+        if t not in out:
+            out.append(t)
+    return out[:3]  # limitiamo (performance)
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def nvd_cve_keyword_search(query: str, limit: int = 6):
+    """
+    NVD API v2: keywordSearch
+    Ritorna una lista di CVE (id, desc breve, severity se presente, url).
+    """
+    url = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+    params = {
+        "keywordSearch": query,
+        "resultsPerPage": limit,
+    }
+    try:
+        r = requests.get(url, params=params, timeout=10)
+        if r.status_code == 429:
+            return {"error": "Rate limit NVD (429). Riprova tra poco."}
+        if r.status_code >= 400:
+            return {"error": f"Errore NVD ({r.status_code})."}
+        data = r.json()
+        items = []
+        for it in data.get("vulnerabilities", [])[:limit]:
+            cve = it.get("cve", {})
+            cve_id = cve.get("id")
+            # descrizione
+            desc = ""
+            for d in cve.get("descriptions", []):
+                if d.get("lang") == "en":
+                    desc = d.get("value", "")
+                    break
+            if not desc and cve.get("descriptions"):
+                desc = cve["descriptions"][0].get("value", "")
+            desc = (desc or "").strip()
+            if len(desc) > 180:
+                desc = desc[:180] + "…"
+
+            # severity (best-effort)
+            sev = None
+            metrics = cve.get("metrics", {})
+            # prova CVSS v3.1 / v3.0 / v2
+            for key in ["cvssMetricV31", "cvssMetricV30", "cvssMetricV2"]:
+                if key in metrics and metrics[key]:
+                    try:
+                        sev = metrics[key][0].get("cvssData", {}).get("baseSeverity")
+                    except Exception:
+                        pass
+                    if sev:
+                        break
+
+            items.append({
+                "id": cve_id,
+                "desc": desc,
+                "severity": sev,
+                "url": f"https://nvd.nist.gov/vuln/detail/{cve_id}" if cve_id else None
+            })
+        return {"items": items}
+    except Exception:
+        return {"error": "NVD non raggiungibile (timeout o blocco rete)."}
+
+# ============================================================
+# REMEDIATION ENGINE (CWE/OWASP + FIX + CTA)
+# ============================================================
+def add_finding(findings: list, key: str, title: str, severity: str, why: str, cwe: str, owasp: str, fix: str):
+    findings.append({
+        "key": key,
+        "title": title,
+        "severity": severity,  # LOW / MEDIUM / HIGH
+        "why": why,
+        "cwe": cwe,
+        "owasp": owasp,
+        "fix": fix
+    })
+
+def severity_badge(sev: str) -> str:
+    sev = (sev or "").upper()
+    if sev == "HIGH":
+        return "🔴 HIGH"
+    if sev == "MEDIUM":
+        return "🟠 MEDIUM"
+    return "🟢 LOW"
+
+def render_remediation(findings: list):
+    st.markdown("## Raccomandazioni & Remediation")
+    if not findings:
+        st.success("Ottimo: non risultano misconfigurazioni evidenti nei controlli attivi.")
+        st.info(f"Per un assessment completo (WAF, hardening server, app security), contattami: {CONTACT_MAIL}")
+        return
+
+    for f in findings:
+        st.markdown(
+            f"""
+            <div class="fix-card">
+              <div class="fix-title">{severity_badge(f["severity"])} — {f["title"]}</div>
+              <div class="fix-meta"><b>CWE:</b> {f["cwe"]} &nbsp;&nbsp; <b>OWASP:</b> {f["owasp"]}</div>
+              <div style="margin-top:8px;"><b>Rischio:</b> {f["why"]}</div>
+              <div style="margin-top:8px;"><b>Come risolvere:</b><br>{f["fix"]}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    st.markdown("---")
+    st.markdown("### Vuoi sistemarlo in modo professionale?")
+    st.markdown(
+        f"""
+        <div class="glass">
+          <div style="font-weight:900; font-size:1.05rem;">📩 Contattami per la remediation</div>
+          <div class="small">
+            • Email: <a href="mailto:{CONTACT_MAIL}">{CONTACT_MAIL}</a><br>
+            • Sito: <a href="https://{CONTACT_SITE}" target="_blank">{CONTACT_SITE}</a><br>
+            • Posso fornire: hardening + policy headers + mail security (SPF/DMARC/DKIM) + report PDF per compliance.
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 # ============================================================
 # SIDEBAR
@@ -378,8 +404,8 @@ with st.sidebar:
     st.markdown("Verifica **passiva / best-effort** su dati pubblici (HTTP / DNS / SSL).")
     st.markdown("---")
     st.markdown("### Contatti")
-    st.markdown("🌐 **Sito:** tmconsulenza.it")
-    st.markdown("📩 **Email:** info@tmconsulenza.it")
+    st.markdown(f"🌐 **Sito:** {CONTACT_SITE}")
+    st.markdown(f"📩 **Email:** {CONTACT_MAIL}")
     st.markdown("---")
     st.markdown("### Note legali")
     st.markdown(
@@ -391,10 +417,14 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
     st.markdown("---")
-    show_geo = st.toggle("Mostra Geo/ASN (opzionale)", value=False)
     advanced_ports = st.toggle("Abilita modalità tecnica (porte)", value=False)
+
     st.markdown("### DKIM (best-effort)")
     dkim_selector = st.text_input("Selector DKIM (opz.)", value="", placeholder="es: selector1")
+
+    st.markdown("---")
+    cve_mode = st.toggle("CVE Intelligence (best-effort)", value=True)
+    st.caption("Mostra CVE SOLO se viene rilevata una versione da header (Server/X-Powered-By).")
 
 # ============================================================
 # STATE
@@ -426,7 +456,7 @@ with c_in1:
     target_input = st.text_input(
         "Inserisci Dominio o IP pubblico",
         value=st.session_state.target_value,
-        placeholder="es: tmconsulenza.it oppure 1.2.3.4",
+        placeholder=f"es: {CONTACT_SITE} oppure 1.2.3.4",
     )
 with c_in2:
     go = st.button("Analizza", use_container_width=True)
@@ -460,7 +490,7 @@ else:
 # SUMMARY
 # ============================================================
 st.markdown("### Riepilogo")
-sumc1, sumc2, sumc3 = st.columns([2, 2, 2])
+sumc1, sumc2 = st.columns(2)
 with sumc1:
     st.markdown('<div class="glass">', unsafe_allow_html=True)
     st.write(f"**Target:** {host}")
@@ -471,31 +501,22 @@ with sumc2:
     st.write(f"**Apex:** {root if root else '—'}")
     st.write(f"**IP risolto:** {resolved_ip if resolved_ip else '—'}")
     st.markdown("</div>", unsafe_allow_html=True)
-with sumc3:
-    st.markdown('<div class="glass">', unsafe_allow_html=True)
-    if show_geo and resolved_ip:
-        geo = get_geo_info(resolved_ip)
-        if geo:
-            st.write(f"**Geo:** {geo.get('city')}, {geo.get('country_name')}")
-            st.write(f"**Org:** {geo.get('org')}")
-        else:
-            st.write("**Geo:** non disponibile")
-    else:
-        st.write("**Geo/ASN:** disattivato")
-    st.markdown("</div>", unsafe_allow_html=True)
 
 st.write("")
-tab_web, tab_email, tab_dns, tab_whois, tab_score = st.tabs(
-    ["🌐 Web", "📧 Email", "🧬 DNS", "🧾 WHOIS/RDAP", "📊 Score"]
+tab_web, tab_email, tab_dns, tab_remed, tab_score = st.tabs(
+    ["🌐 Web", "📧 Email", "🧬 DNS", "🛠️ Fix", "📊 Score"]
 )
 
 # ============================================================
 # ANALYSIS VARS
 # ============================================================
+findings = []
+
 status = None
 final_url = None
 headers = {}
 ssl_data = None
+header_score = 0
 
 spf = None
 dmarc = None
@@ -504,7 +525,8 @@ dkim_found = []
 
 dnssec = False
 caa = []
-header_score = 0
+
+version_tokens = []  # per CVE
 
 # ============================================================
 # TAB WEB
@@ -519,34 +541,151 @@ with tab_web:
             st.success(f"HTTPS raggiungibile — Status: {status}")
             st.write(f"URL finale: **{final_url}**")
 
+            # raccogli token versione per CVE
+            version_tokens = extract_version_tokens(headers)
+
             st.markdown("### Security Headers (best-effort)")
-            security_headers = {
-                "Strict-Transport-Security": "HSTS",
-                "Content-Security-Policy": "CSP",
-                "X-Frame-Options": "Clickjacking",
-                "X-Content-Type-Options": "MIME sniffing",
-                "Referrer-Policy": "Referrer control",
-            }
+            security_headers = [
+                ("Strict-Transport-Security", "HSTS", "Protegge da downgrade HTTP→HTTPS"),
+                ("Content-Security-Policy", "CSP", "Riduce XSS / injection lato browser"),
+                ("X-Frame-Options", "XFO", "Riduce clickjacking"),
+                ("X-Content-Type-Options", "XCTO", "Riduce MIME sniffing"),
+                ("Referrer-Policy", "Referrer-Policy", "Riduce leakage informazioni referrer"),
+            ]
+
             header_score = 0
-            for h, label in security_headers.items():
+            for h, label, desc in security_headers:
                 if h in headers:
-                    st.success(f"✔ {label} — {h} presente")
+                    st.success(f"✔ {label} presente — {h}")
                     header_score += 1
                 else:
-                    st.warning(f"⚠ {label} — {h} mancante")
+                    st.warning(f"⚠ {label} mancante — {h} ({desc})")
+
+                    # Remediation mapping (CWE/OWASP)
+                    if h == "Content-Security-Policy":
+                        add_finding(
+                            findings, "missing_csp",
+                            "Content-Security-Policy mancante",
+                            "MEDIUM",
+                            "Aumenta superficie XSS / injection lato browser.",
+                            "CWE-79",
+                            "A03:2021 Injection",
+                            "Imposta una CSP baseline (es: `default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`) e poi affinala in base alle risorse reali."
+                        )
+                    elif h == "X-Frame-Options":
+                        add_finding(
+                            findings, "missing_xfo",
+                            "X-Frame-Options mancante",
+                            "MEDIUM",
+                            "Possibile clickjacking (embedding in iframe).",
+                            "CWE-1021",
+                            "A05:2021 Security Misconfiguration",
+                            "Aggiungi `X-Frame-Options: DENY` oppure `SAMEORIGIN`. Meglio: usa CSP `frame-ancestors 'none'`."
+                        )
+                    elif h == "Strict-Transport-Security":
+                        add_finding(
+                            findings, "missing_hsts",
+                            "HSTS mancante",
+                            "LOW",
+                            "Rischio downgrade/SSL-strip in scenari specifici.",
+                            "CWE-319",
+                            "A02:2021 Cryptographic Failures",
+                            "Aggiungi `Strict-Transport-Security: max-age=15552000; includeSubDomains` (valuta preload dopo test)."
+                        )
+                    elif h == "X-Content-Type-Options":
+                        add_finding(
+                            findings, "missing_xcto",
+                            "X-Content-Type-Options mancante",
+                            "LOW",
+                            "Maggior rischio di MIME sniffing su risorse statiche.",
+                            "CWE-16",
+                            "A05:2021 Security Misconfiguration",
+                            "Aggiungi `X-Content-Type-Options: nosniff`."
+                        )
+                    elif h == "Referrer-Policy":
+                        add_finding(
+                            findings, "missing_refpol",
+                            "Referrer-Policy mancante",
+                            "LOW",
+                            "Possibile leakage URL/path verso terze parti.",
+                            "CWE-200",
+                            "A01:2021 Broken Access Control",
+                            "Aggiungi `Referrer-Policy: strict-origin-when-cross-origin` (o policy più restrittiva se compatibile)."
+                        )
 
             leak = []
-            if headers.get("Server"):
-                leak.append(f"Server: {headers.get('Server')}")
-            if headers.get("X-Powered-By"):
-                leak.append(f"X-Powered-By: {headers.get('X-Powered-By')}")
+            server = headers.get("Server")
+            powered = headers.get("X-Powered-By")
+
+            if server:
+                leak.append(f"Server: {server}")
+            if powered:
+                leak.append(f"X-Powered-By: {powered}")
+
             if leak:
                 st.warning("Possibile **information leakage**: " + " | ".join(leak))
+                add_finding(
+                    findings, "version_leak",
+                    "Information Leakage (Server/X-Powered-By)",
+                    "LOW",
+                    "Espone stack/tecnologie; utile per fingerprinting. Le CVE hanno senso solo con versione confermata.",
+                    "CWE-200",
+                    "A05:2021 Security Misconfiguration",
+                    "Rimuovi o normalizza gli header (`server_tokens off` su Nginx, config su Apache/IIS/framework)."
+                )
             else:
                 st.success("Nessun header tipico di leakage rilevato.")
+
+            # ---------------- CVE SECTION ----------------
+            st.markdown("---")
+            st.markdown("## CVE Intelligence (best-effort)")
+            st.caption("Mostrata SOLO se rilevo prodotto/versione da header. Indicativo: va confermato con inventario/scan autorizzato.")
+
+            if not cve_mode:
+                st.info("CVE disattivate (toggle in sidebar).")
+            else:
+                if not version_tokens:
+                    st.info("Nessuna versione rilevata negli header (quindi niente CVE).")
+                    st.caption("Suggerimento: spesso le versioni sono nascoste: è una buona pratica.")
+                else:
+                    st.write("Versioni rilevate (best-effort):")
+                    for vt in version_tokens:
+                        st.code(vt)
+
+                    for vt in version_tokens:
+                        with st.spinner(f"Cerco CVE per: {vt} (NVD) ..."):
+                            res = nvd_cve_keyword_search(vt, limit=6)
+
+                        if res.get("error"):
+                            st.warning(f"{vt}: {res['error']}")
+                            continue
+
+                        items = res.get("items", [])
+                        if not items:
+                            st.info(f"{vt}: nessuna CVE trovata via keywordSearch (non significa 'zero vulnerabilità').")
+                            continue
+
+                        st.markdown(f"### Risultati per **{vt}**")
+                        for it in items:
+                            sev = it.get("severity") or "N/D"
+                            cid = it.get("id") or "CVE-N/D"
+                            desc = it.get("desc") or ""
+                            url = it.get("url") or ""
+                            st.write(f"- **{cid}** (Severity: **{sev}**) — {desc}")
+                            if url:
+                                st.caption(url)
+
         except Exception:
             st.error("Impossibile analizzare via HTTPS (host non raggiungibile / TLS / redirect).")
-            header_score = 0
+            add_finding(
+                findings, "https_unreachable",
+                "HTTPS non verificabile",
+                "MEDIUM",
+                "Il servizio HTTPS non risponde o handshake fallisce. Potrebbe essere downtime, WAF, geo-block o config TLS.",
+                "CWE-319",
+                "A02:2021 Cryptographic Failures",
+                "Verifica DNS, certificato, catena, TLS policy e reachability. Se vuoi, posso fare troubleshooting e fix."
+            )
 
     st.markdown("---")
     st.markdown("## SSL / TLS (best-effort)")
@@ -556,8 +695,26 @@ with tab_web:
             st.warning("Scadenza certificato non determinabile.")
         elif ssl_data["days_left"] < 0:
             st.error(f"Certificato **SCADUTO** ({ssl_data['days_left']} giorni).")
+            add_finding(
+                findings, "ssl_expired",
+                "Certificato SSL scaduto",
+                "HIGH",
+                "Servizio non trusted: rischio MITM e interruzioni.",
+                "CWE-295",
+                "A02:2021 Cryptographic Failures",
+                "Rinnova subito il certificato (ACME/Let's Encrypt o CA), verifica catena e auto-renew."
+            )
         elif ssl_data["days_left"] < 30:
             st.warning(f"Certificato in scadenza: **{ssl_data['days_left']} giorni**.")
+            add_finding(
+                findings, "ssl_expiring",
+                "Certificato SSL in scadenza",
+                "MEDIUM",
+                "Rischio outage e warning browser a breve.",
+                "CWE-295",
+                "A02:2021 Cryptographic Failures",
+                "Configura rinnovo automatico e monitoraggio scadenza (alert 30/14/7 giorni)."
+            )
         else:
             st.success(f"Certificato valido: scade tra **{ssl_data['days_left']} giorni**.")
 
@@ -590,10 +747,17 @@ with tab_web:
                 open_ports += 1
             else:
                 st.success(f"✔ Porta {p} ({name}) chiusa")
-        if open_ports == 0:
-            st.success("✔ Nessuna porta comune risulta esposta (best-effort).")
-        else:
-            st.warning("⚠ Porte esposte: verifica firewall/VPN/ACL e che sia voluto.")
+
+        if open_ports > 0:
+            add_finding(
+                findings, "ports_exposed",
+                "Porte comuni esposte",
+                "MEDIUM",
+                "Servizi esposti aumentano superficie d’attacco (brute-force e CVE su servizi reali).",
+                "CWE-284",
+                "A05:2021 Security Misconfiguration",
+                "Chiudi porte non necessarie, limita via firewall, abilita VPN/ACL, MFA dove possibile (es. SSH), rate-limit e monitoring."
+            )
 
 # ============================================================
 # TAB EMAIL
@@ -620,13 +784,44 @@ with tab_email:
             st.code(spf)
         else:
             st.warning("⚠ SPF assente (se il dominio invia email è un rischio spoofing)")
+            if mx:
+                add_finding(
+                    findings, "missing_spf",
+                    "SPF mancante (dominio con MX)",
+                    "HIGH",
+                    "Senza SPF, aumenta rischio spoofing e phishing usando il tuo dominio.",
+                    "CWE-290",
+                    "A07:2021 Identification and Authentication Failures",
+                    "Aggiungi record TXT SPF coerente con i tuoi provider (es. Microsoft 365 / Google / SMTP relay)."
+                )
 
         st.markdown("### DMARC")
         if dmarc:
             st.success("✔ DMARC presente")
             st.code(dmarc)
+            dl = dmarc.lower()
+            if "p=none" in dl:
+                add_finding(
+                    findings, "dmarc_p_none",
+                    "DMARC in monitor (p=none)",
+                    "MEDIUM",
+                    "DMARC monitora ma non blocca abusi (spoofing).",
+                    "CWE-290",
+                    "A07:2021 Identification and Authentication Failures",
+                    "Passa gradualmente a `p=quarantine` e poi `p=reject` dopo aver controllato report e allineamenti SPF/DKIM."
+                )
         else:
             st.warning("⚠ DMARC assente (se il dominio invia email, mancano policy e reporting)")
+            if mx:
+                add_finding(
+                    findings, "missing_dmarc",
+                    "DMARC mancante (dominio con MX)",
+                    "HIGH",
+                    "Senza DMARC manca enforcement e reporting anti-spoofing.",
+                    "CWE-290",
+                    "A07:2021 Identification and Authentication Failures",
+                    "Aggiungi `_dmarc` con `v=DMARC1; p=none; rua=mailto:<report@...>` poi hardening fino a quarantine/reject."
+                )
 
         st.markdown("### DKIM (best-effort)")
         dkim_found = best_effort_dkim(root, dkim_selector)
@@ -635,11 +830,18 @@ with tab_email:
             for sel, rec in dkim_found[:6]:
                 st.write(f"Selector: **{sel}**")
                 st.code(rec)
-            if len(dkim_found) > 6:
-                st.info("Altri record DKIM trovati (output troncato).")
         else:
             st.info("DKIM non rilevato (può essere perché il selector è diverso).")
-            st.caption("Suggerimento: se sai il selector del provider, inseriscilo in sidebar.")
+            if mx:
+                add_finding(
+                    findings, "dkim_not_found",
+                    "DKIM non rilevato (best-effort)",
+                    "MEDIUM",
+                    "Se il dominio invia email, DKIM aiuta deliverability e anti-spoofing.",
+                    "CWE-290",
+                    "A07:2021 Identification and Authentication Failures",
+                    "Verifica provider mail e selector DKIM. Posso configurarlo su Microsoft 365/Google/SMTP e validare allineamento DMARC."
+                )
 
 # ============================================================
 # TAB DNS
@@ -656,107 +858,65 @@ with tab_dns:
             st.success("✔ DNSSEC: record DS trovato (best-effort)")
         else:
             st.warning("⚠ DNSSEC: record DS non trovato")
+            add_finding(
+                findings, "dnssec_off",
+                "DNSSEC assente",
+                "LOW",
+                "Maggiore rischio di attacchi DNS (spoof/poisoning) in scenari specifici.",
+                "CWE-345",
+                "A08:2021 Software and Data Integrity Failures",
+                "Valuta abilitazione DNSSEC presso registrar/DNS provider (attenzione: gestione chiavi e rotazione)."
+            )
 
         if caa:
             st.success("✔ CAA presente")
             st.code("\n".join(caa))
         else:
             st.warning("⚠ CAA assente")
+            add_finding(
+                findings, "caa_missing",
+                "CAA mancante",
+                "LOW",
+                "Senza CAA, qualunque CA potrebbe emettere certificati (se compromesse altre condizioni).",
+                "CWE-295",
+                "A02:2021 Cryptographic Failures",
+                "Aggiungi record CAA per limitare le CA autorizzate (es. letsencrypt.org / digicert.com)."
+            )
 
 # ============================================================
-# TAB WHOIS/RDAP (CON PULSANTI FALLBACK)
+# TAB REMEDIATION
 # ============================================================
-with tab_whois:
-    st.markdown("## WHOIS / RDAP (best-effort)")
-    if is_ip:
-        st.info("WHOIS dominio non applicabile a un IP qui (servirebbe WHOIS ASN/RIR separato).")
-    else:
-        # link fallback SEMPRE visibili
-        st.markdown("### Link rapidi (fallback)")
-        cL1, cL2, cL3 = st.columns(3)
-        with cL1:
-            st.link_button("Apri RDAP (NIC.it)", f"https://rdap.nic.it/domain/{root}", use_container_width=True)
-        with cL2:
-            st.link_button("Apri RDAP (rdap.org)", f"https://rdap.org/domain/{root}", use_container_width=True)
-        with cL3:
-            st.link_button("Apri WHOIS (Registro.it)", "https://www.registro.it/ricerca-whois/", use_container_width=True)
-
-        st.markdown("---")
-
-        rd, source = rdap_domain_best_effort(root)
-        if not rd:
-            st.warning("RDAP non disponibile o non risponde dal server (best-effort). Usa i link sopra.")
-            st.caption("Nota: spesso è un limite di rete/egress del deploy. I dati registrant possono essere redatti (GDPR).")
-        else:
-            created, updated, expires = rdap_extract_dates(rd)
-            d_created = parse_iso_date(created)
-            d_updated = parse_iso_date(updated)
-            d_expires = parse_iso_date(expires)
-            left = days_until(d_expires) if d_expires else None
-
-            st.success(f"RDAP OK (fonte: {source})")
-
-            st.markdown("### Dati principali")
-            cA, cB, cC, cD = st.columns(4)
-            with cA:
-                st.metric("Creato", (created or "N/D")[:10])
-            with cB:
-                st.metric("Aggiornato", (updated or "N/D")[:10])
-            with cC:
-                st.metric("Scadenza", (expires or "N/D")[:10])
-            with cD:
-                st.metric("Giorni alla scadenza", str(left) if left is not None else "N/D")
-
-            if left is not None:
-                if left < 0:
-                    st.error("⚠ Dominio risulta SCADUTO (o data RDAP incoerente).")
-                elif left < 30:
-                    st.warning("⚠ Dominio in scadenza < 30 giorni.")
-                elif left < 90:
-                    st.info("ℹ️ Dominio in scadenza < 90 giorni.")
-
-            st.markdown("### Registrar / Status / Nameserver")
-            reg_name = rd.get("registrarName") or "N/D"
-            st.write(f"**Registrar:** {reg_name}")
-
-            statuses = rd.get("status", [])
-            if statuses:
-                st.write("**Status:**")
-                st.code("\n".join(statuses))
-
-            ns = [n.get("ldhName") for n in rd.get("nameservers", []) if n.get("ldhName")]
-            if ns:
-                st.write("**Nameserver:**")
-                st.code("\n".join(ns))
-
-            st.caption("Intestatario/registrant: spesso **redatto** (GDPR).")
+with tab_remed:
+    render_remediation(findings)
 
 # ============================================================
-# TAB SCORE (NORMALIZZATO)
+# TAB SCORE (NORMALIZZATO + NON PUNISCE MODULI NON APPLICABILI)
 # ============================================================
 with tab_score:
     st.markdown("## Cyber Exposure Index (best-effort)")
 
+    WEB_W = 40
+    EMAIL_W = 35
+    DNS_W = 25
+
     score = 0
     weight_total = 0
 
-    # Web (solo dominio)
-    web_w = 40
+    # WEB applicabile se dominio
     if not is_ip:
-        weight_total += web_w
+        weight_total += WEB_W
         web_points = 0
         if status in (200, 301, 302, 307, 308):
             web_points += 10
         if ssl_data and isinstance(ssl_data.get("days_left"), int) and ssl_data["days_left"] > 0:
             web_points += 10
-        web_points += min(20, header_score * 4)  # max 20
-        score += min(web_w, web_points)
+        web_points += min(20, header_score * 4)
+        score += min(WEB_W, web_points)
 
-    # Email applicabile solo se c'è almeno un segnale (MX/SPF/DMARC/DKIM)
-    email_w = 35
+    # EMAIL applicabile solo se segnali mail
     email_applicable = (not is_ip) and (bool(mx) or bool(spf) or bool(dmarc) or bool(dkim_found))
     if email_applicable:
-        weight_total += email_w
+        weight_total += EMAIL_W
         ep = 0
         if spf: ep += 10
         if dmarc:
@@ -765,16 +925,15 @@ with tab_score:
             if "p=quarantine" in dl: ep += 5
             if "p=reject" in dl: ep += 10
         if dkim_found: ep += 10
-        score += min(email_w, ep)
+        score += min(EMAIL_W, ep)
 
-    # DNS (solo dominio)
-    dns_w = 25
+    # DNS applicabile se dominio
     if not is_ip:
-        weight_total += dns_w
+        weight_total += DNS_W
         dp = 0
         if dnssec: dp += 10
         if caa: dp += 10
-        score += min(dns_w, dp)
+        score += min(DNS_W, dp)
 
     if weight_total == 0:
         st.info("Score non calcolabile per questo target (mancano moduli applicabili).")
@@ -788,7 +947,7 @@ with tab_score:
           <div>
             <div class="small">Punteggio normalizzato sui moduli applicabili</div>
             <h2 style="margin:6px 0 0 0;">{final}/100</h2>
-            <div class="small">Non penalizza se il dominio non ha posta o sito (moduli non applicabili).</div>
+            <div class="small">Non penalizza se il dominio non ha posta/sito (moduli non applicabili).</div>
           </div>
           <div class="radar" style="--p: {final}%;">
             <span>{final}</span>
@@ -820,8 +979,15 @@ IP: {resolved_ip if resolved_ip else '-'}
 Data: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 Score: {final}/100
 
+Findings: {len(findings)}
+CVE mode: {"ON" if cve_mode else "OFF"}
+Version tokens: {", ".join(version_tokens) if version_tokens else "-"}
+
+Contatto: {CONTACT_MAIL} | {CONTACT_SITE}
+
 DISCLAIMER:
 - Analisi basata su dati pubblici/best-effort.
 - Scansione porte solo con autorizzazione.
+- CVE: risultati indicativi basati su keyword; richiede conferma su prodotto/versione effettivi.
 """
     st.download_button("📥 Scarica report (txt)", report, file_name="security_report.txt")
