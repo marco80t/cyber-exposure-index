@@ -12,6 +12,55 @@ import tldextract
 # CONFIG / UI
 # ==============================================================
 st.set_page_config(page_title="Security Quick Check Pro", page_icon="🛡️", layout="wide")
+# ------------------------------------------------
+# MATRIX BACKGROUND STYLE
+# ------------------------------------------------
+def apply_matrix_style():
+    st.markdown(
+        """
+        <style>
+        .stApp {
+            background: linear-gradient(rgba(0,0,0,0.88), rgba(0,0,0,0.92)),
+                        url("assets/bg.png");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }
+
+        h1, h2, h3 {
+            color: #00ff88 !important;
+            text-shadow: 0 0 10px rgba(0,255,136,0.6);
+        }
+
+        .stButton>button {
+            background-color: #00ff88;
+            color: black;
+            border-radius: 8px;
+            font-weight: 600;
+        }
+
+        .stButton>button:hover {
+            background-color: #00cc6a;
+            color: white;
+        }
+
+        .stMetric {
+            background-color: rgba(0, 255, 136, 0.05);
+            border: 1px solid rgba(0,255,136,0.25);
+            border-radius: 12px;
+            padding: 12px;
+        }
+
+        .stAlert {
+            border-radius: 10px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+apply_matrix_style()
+
 import base64
 from pathlib import Path
 import streamlit as st
@@ -856,5 +905,6 @@ with tab_score:
     report_text = "\n".join(report_lines)
 
     st.download_button("Scarica Report Rapido", report_text, file_name="security_quick_check_report.txt")
+
 
 
