@@ -182,6 +182,13 @@ def hero_matrix(title: str, subtitle: str, badge_text: str = "PASSIVE / BEST-EFF
 # USO:
 # inject_matrix_ui("assets/bg.png")
 # hero_matrix("Security Quick Check Pro", "Analisi su dati pubblici (HTTP / DNS / SSL). Modalità tecnica solo con autorizzazione.")
+inject_matrix_ui("assets/bg.png")
+
+hero_matrix(
+    "Security Quick Check Pro",
+    "Analisi basata su dati pubblici (HTTP / DNS / SSL). Nessun test intrusivo. Modalità tecnica solo con autorizzazione."
+)
+
 
 
 UA = {"User-Agent": "SecurityQuickCheckPro/1.0"}
@@ -849,4 +856,5 @@ with tab_score:
     report_text = "\n".join(report_lines)
 
     st.download_button("Scarica Report Rapido", report_text, file_name="security_quick_check_report.txt")
+
 
