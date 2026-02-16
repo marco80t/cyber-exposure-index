@@ -13,13 +13,13 @@ import tldextract
 st.set_page_config(page_title="Security Quick Check Pro", page_icon="🛡️", layout="wide")
 
 # ============================================================
-# MATRIX UI / CSS (FUTURISTICO + FIX VISIBILITÀ)
+# MATRIX UI / CSS (FIX SIDEBAR + CONTRASTO)
 # ============================================================
 def apply_matrix_style():
     st.markdown(
         """
         <style>
-        /* Background matrix + overlay scuro */
+        /* ---------- APP BACKGROUND ---------- */
         .stApp {
             background:
                 radial-gradient(circle at 20% 10%, rgba(0,255,136,0.12) 0%, transparent 40%),
@@ -30,8 +30,6 @@ def apply_matrix_style():
             background-position: center;
             background-attachment: fixed;
         }
-
-        /* “Grid” tech overlay */
         .stApp:before {
             content: "";
             position: fixed;
@@ -41,67 +39,84 @@ def apply_matrix_style():
                 linear-gradient(to right, rgba(0,255,136,0.06) 1px, transparent 1px),
                 linear-gradient(to bottom, rgba(0,255,136,0.05) 1px, transparent 1px);
             background-size: 60px 60px;
-            opacity: 0.20;
+            opacity: 0.18;
             z-index: 0;
         }
-
-        /* Porta avanti il contenuto */
         section.main > div { position: relative; z-index: 1; }
 
-        /* Testo generale più leggibile */
+        /* ---------- SIDEBAR (FIX VISIBILITÀ) ---------- */
+        [data-testid="stSidebar"] {
+            background: rgba(8, 14, 11, 0.96) !important;
+            border-right: 1px solid rgba(0,255,136,0.22);
+        }
+        [data-testid="stSidebar"] * {
+            color: rgba(235,255,245,0.92) !important;
+        }
+        [data-testid="stSidebar"] a {
+            color: #00ff88 !important;
+        }
+        [data-testid="stSidebar"] .stMarkdown h1,
+        [data-testid="stSidebar"] .stMarkdown h2,
+        [data-testid="stSidebar"] .stMarkdown h3 {
+            color: #00ff88 !important;
+            text-shadow: 0 0 10px rgba(0,255,136,0.45);
+        }
+        [data-testid="stSidebar"] hr {
+            border-color: rgba(0,255,136,0.18) !important;
+        }
+
+        /* ---------- GLOBAL TEXT ---------- */
         html, body, [class*="st-"], .stMarkdown, .stText, .stCaption, .stWrite {
             color: rgba(235,255,245,0.92) !important;
         }
-
-        /* Titoli neon */
         h1, h2, h3, h4 {
             color: #00ff88 !important;
             text-shadow: 0 0 12px rgba(0,255,136,0.55);
-            letter-spacing: 0.2px;
         }
+        .small { opacity: 0.85; font-size: 0.92rem; }
 
-        /* Card glass (più visibile) */
+        /* ---------- GLASS CARDS ---------- */
         .glass {
             padding: 16px 18px;
             border-radius: 14px;
             border: 1px solid rgba(0,255,136,0.28);
-            background: rgba(10, 18, 14, 0.55);
+            background: rgba(10, 18, 14, 0.58);
             box-shadow: 0 0 30px rgba(0,255,136,0.10);
             backdrop-filter: blur(10px);
         }
         .glass * { color: rgba(235,255,245,0.94) !important; }
 
-        /* Metric box */
+        /* ---------- METRICS ---------- */
         [data-testid="stMetric"] {
-            background: rgba(10, 18, 14, 0.55) !important;
+            background: rgba(10, 18, 14, 0.58) !important;
             border: 1px solid rgba(0,255,136,0.28) !important;
             border-radius: 14px !important;
             padding: 12px !important;
         }
 
-        /* Input */
+        /* ---------- INPUTS ---------- */
         .stTextInput label { color: rgba(235,255,245,0.85) !important; }
         .stTextInput input {
             color: rgba(235,255,245,0.95) !important;
             border-radius: 10px !important;
             border: 1px solid rgba(0,255,136,0.28) !important;
-            background: rgba(10, 18, 14, 0.55) !important;
+            background: rgba(10, 18, 14, 0.58) !important;
         }
 
-        /* Tabs */
+        /* ---------- TABS ---------- */
         button[data-baseweb="tab"] {
             border-radius: 999px !important;
             margin-right: 8px;
             border: 1px solid rgba(0,255,136,0.22) !important;
             background: rgba(10, 18, 14, 0.35) !important;
-            color: rgba(235,255,245,0.90) !important;
+            color: rgba(235,255,245,0.92) !important;
         }
         button[data-baseweb="tab"][aria-selected="true"] {
-            background: rgba(0,255,136,0.12) !important;
+            background: rgba(0,255,136,0.14) !important;
             box-shadow: 0 0 18px rgba(0,255,136,0.20) !important;
         }
 
-        /* Bottoni */
+        /* ---------- BUTTONS ---------- */
         .stButton>button {
             background: linear-gradient(135deg, #00ff88, #00cc6a);
             color: #06120b !important;
@@ -115,12 +130,7 @@ def apply_matrix_style():
             box-shadow: 0 0 26px rgba(0,255,136,0.32);
         }
 
-        /* Link */
-        a { color: #00ff88 !important; }
-
-        .small { opacity: 0.85; font-size: 0.92rem; }
-
-        /* Radar */
+        /* ---------- RADAR ---------- */
         .radar {
             width: 180px; height: 180px;
             border-radius: 999px;
@@ -150,37 +160,6 @@ def apply_matrix_style():
     )
 
 apply_matrix_style()
-
-# ============================================================
-# SIDEBAR
-# ============================================================
-with st.sidebar:
-    st.markdown("## 🛡️ Security Quick Check Pro")
-    try:
-        st.image("assets/logo.png", use_container_width=True)
-    except Exception:
-        pass
-
-    st.markdown("Verifica **passiva / best-effort** su dati pubblici (HTTP / DNS / SSL).")
-    st.markdown("---")
-    st.markdown("### Contatti")
-    st.markdown("🌐 **Sito:** tmconsulenza.it")
-    st.markdown("📩 **Email:** info@tmconsulenza.it")
-    st.markdown("---")
-    st.markdown("### Note legali")
-    st.markdown(
-        "<div class='small'>"
-        "• Controlli basati su informazioni pubbliche.<br>"
-        "• Modalità porte solo con autorizzazione del proprietario.<br>"
-        "• Nessun brute-force, nessun accesso, nessun exploit."
-        "</div>",
-        unsafe_allow_html=True,
-    )
-    st.markdown("---")
-    show_geo = st.toggle("Mostra Geo/ASN (opzionale)", value=False)
-    advanced_ports = st.toggle("Abilita modalità tecnica (porte)", value=False)
-    st.markdown("### DKIM (best-effort)")
-    dkim_selector = st.text_input("Selector DKIM (opz.)", value="", placeholder="es: selector1")
 
 # ============================================================
 # HELPERS
@@ -263,6 +242,35 @@ def get_geo_info(ip: str):
     except Exception:
         return None
 
+# ---------------- RDAP / WHOIS (best-effort) ----------------
+def rdap_request_json(url: str):
+    """Prova a ottenere JSON RDAP. Ritorna dict o None."""
+    try:
+        r = requests.get(url, timeout=8, headers={"User-Agent": "SecurityQuickCheckPro/1.0"})
+        if r.status_code == 200:
+            ct = (r.headers.get("content-type") or "").lower()
+            if "json" in ct or ct.startswith("application/"):
+                return r.json()
+        return None
+    except Exception:
+        return None
+
+def rdap_request_via_proxy(url: str):
+    """
+    Fallback best-effort: usa r.jina.ai per aggirare blocchi di rete.
+    Non sempre funziona, ma spesso sì su Streamlit Cloud.
+    """
+    try:
+        prox = "https://r.jina.ai/http://"+url.replace("https://", "").replace("http://", "")
+        r = requests.get(prox, timeout=10, headers={"User-Agent": "SecurityQuickCheckPro/1.0"})
+        if r.status_code != 200:
+            return None
+        txt = r.text.strip()
+        # r.jina.ai spesso restituisce il JSON “pulito” come testo
+        return requests.models.complexjson.loads(txt)
+    except Exception:
+        return None
+
 def rdap_extract_dates(rdap_json: dict):
     created = None
     updated = None
@@ -284,7 +292,6 @@ def parse_iso_date(d: str):
     if not d:
         return None
     try:
-        # gestisce 2026-01-01T00:00:00Z e simili
         return datetime.fromisoformat(d.replace("Z", "+00:00"))
     except Exception:
         return None
@@ -297,48 +304,53 @@ def days_until(dt: datetime):
         dt = dt.replace(tzinfo=timezone.utc)
     return (dt - now).days
 
-def rdap_request(url: str):
-    try:
-        r = requests.get(url, timeout=8, headers={"User-Agent": "SecurityQuickCheckPro/1.0"})
-        if r.status_code == 200 and r.headers.get("content-type", "").lower().startswith("application/"):
-            return r.json()
-        return None
-    except Exception:
-        return None
-
 def rdap_domain_best_effort(domain: str):
     """
-    Prova più strade:
-    1) RDAP specifico per .it (rdap.nic.it)
-    2) rdap.org (a volte bloccato/instabile)
-    3) bootstrap IANA (dns.json) per trovare l'endpoint del TLD
+    Ordine:
+    1) .it -> rdap.nic.it
+    2) rdap.org
+    3) bootstrap IANA -> endpoint tld
+    4) proxy (r.jina.ai) su rdap.nic.it e rdap.org (best-effort)
     """
     domain = domain.strip().lower()
     tld = domain.split(".")[-1]
 
-    # 1) .it -> NIC.it
+    # 1) .it
     if tld == "it":
-        data = rdap_request(f"https://rdap.nic.it/domain/{domain}")
+        url = f"https://rdap.nic.it/domain/{domain}"
+        data = rdap_request_json(url)
         if data:
             return data, "rdap.nic.it"
+        # proxy fallback
+        data = rdap_request_via_proxy(url)
+        if data:
+            return data, "rdap.nic.it (proxy)"
 
     # 2) rdap.org
-    data = rdap_request(f"https://rdap.org/domain/{domain}")
+    url = f"https://rdap.org/domain/{domain}"
+    data = rdap_request_json(url)
     if data:
         return data, "rdap.org"
+    data = rdap_request_via_proxy(url)
+    if data:
+        return data, "rdap.org (proxy)"
 
     # 3) IANA bootstrap
-    bootstrap = rdap_request("https://data.iana.org/rdap/dns.json")
-    if bootstrap:
-        services = bootstrap.get("services", [])
+    boot = rdap_request_json("https://data.iana.org/rdap/dns.json")
+    if boot:
+        services = boot.get("services", [])
         for item in services:
             tlds, urls = item[0], item[1]
             if tld in [x.strip(".").lower() for x in tlds]:
                 for base in urls:
                     base = base.rstrip("/")
-                    data = rdap_request(f"{base}/domain/{domain}")
+                    url = f"{base}/domain/{domain}"
+                    data = rdap_request_json(url)
                     if data:
                         return data, base
+                    data = rdap_request_via_proxy(url)
+                    if data:
+                        return data, f"{base} (proxy)"
 
     return None, None
 
@@ -352,6 +364,37 @@ def best_effort_dkim(root: str, selector: str = ""):
             if "v=dkim1" in t.lower():
                 found.append((s, t))
     return found
+
+# ============================================================
+# SIDEBAR
+# ============================================================
+with st.sidebar:
+    st.markdown("## 🛡️ Security Quick Check Pro")
+    try:
+        st.image("assets/logo.png", use_container_width=True)
+    except Exception:
+        pass
+
+    st.markdown("Verifica **passiva / best-effort** su dati pubblici (HTTP / DNS / SSL).")
+    st.markdown("---")
+    st.markdown("### Contatti")
+    st.markdown("🌐 **Sito:** tmconsulenza.it")
+    st.markdown("📩 **Email:** info@tmconsulenza.it")
+    st.markdown("---")
+    st.markdown("### Note legali")
+    st.markdown(
+        "<div class='small'>"
+        "• Controlli basati su informazioni pubbliche.<br>"
+        "• Modalità porte solo con autorizzazione del proprietario.<br>"
+        "• Nessun brute-force, nessun accesso, nessun exploit."
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown("---")
+    show_geo = st.toggle("Mostra Geo/ASN (opzionale)", value=False)
+    advanced_ports = st.toggle("Abilita modalità tecnica (porte)", value=False)
+    st.markdown("### DKIM (best-effort)")
+    dkim_selector = st.text_input("Selector DKIM (opz.)", value="", placeholder="es: selector1")
 
 # ============================================================
 # STATE
@@ -414,7 +457,7 @@ else:
         resolved_ip = a_records[0]
 
 # ============================================================
-# SUMMARY CARD (FIX VISIBILITÀ)
+# SUMMARY
 # ============================================================
 st.markdown("### Riepilogo")
 sumc1, sumc2, sumc3 = st.columns([2, 2, 2])
@@ -467,7 +510,7 @@ header_score = 0
 # TAB WEB
 # ============================================================
 with tab_web:
-    st.markdown("## 1) Web Reachability & Security Headers")
+    st.markdown("## Web Reachability & Security Headers")
     if is_ip:
         st.info("Per IP: la parte Web completa richiede un hostname (dominio).")
     else:
@@ -506,7 +549,7 @@ with tab_web:
             header_score = 0
 
     st.markdown("---")
-    st.markdown("## 2) SSL / TLS (best-effort)")
+    st.markdown("## SSL / TLS (best-effort)")
     try:
         ssl_data = ssl_info(host)
         if ssl_data["days_left"] is None:
@@ -526,7 +569,7 @@ with tab_web:
         st.error("Impossibile verificare SSL (porta 443 non disponibile o handshake fallito).")
 
     st.markdown("---")
-    st.markdown("## 3) Modalità tecnica (porte) — solo con autorizzazione")
+    st.markdown("## Modalità tecnica (porte) — solo con autorizzazione")
     if not advanced_ports:
         st.info("Attiva **“Abilita modalità tecnica (porte)”** nella sidebar per mostrare la sezione.")
     else:
@@ -621,19 +664,31 @@ with tab_dns:
             st.warning("⚠ CAA assente")
 
 # ============================================================
-# TAB WHOIS/RDAP (FIX: fallback .it)
+# TAB WHOIS/RDAP (CON PULSANTI FALLBACK)
 # ============================================================
 with tab_whois:
     st.markdown("## WHOIS / RDAP (best-effort)")
     if is_ip:
         st.info("WHOIS dominio non applicabile a un IP qui (servirebbe WHOIS ASN/RIR separato).")
     else:
+        # link fallback SEMPRE visibili
+        st.markdown("### Link rapidi (fallback)")
+        cL1, cL2, cL3 = st.columns(3)
+        with cL1:
+            st.link_button("Apri RDAP (NIC.it)", f"https://rdap.nic.it/domain/{root}", use_container_width=True)
+        with cL2:
+            st.link_button("Apri RDAP (rdap.org)", f"https://rdap.org/domain/{root}", use_container_width=True)
+        with cL3:
+            st.link_button("Apri WHOIS (Registro.it)", "https://www.registro.it/ricerca-whois/", use_container_width=True)
+
+        st.markdown("---")
+
         rd, source = rdap_domain_best_effort(root)
         if not rd:
-            st.warning("RDAP non disponibile o non risponde per questo dominio (best-effort).")
+            st.warning("RDAP non disponibile o non risponde dal server (best-effort). Usa i link sopra.")
+            st.caption("Nota: spesso è un limite di rete/egress del deploy. I dati registrant possono essere redatti (GDPR).")
         else:
             created, updated, expires = rdap_extract_dates(rd)
-
             d_created = parse_iso_date(created)
             d_updated = parse_iso_date(updated)
             d_expires = parse_iso_date(expires)
@@ -674,11 +729,10 @@ with tab_whois:
                 st.write("**Nameserver:**")
                 st.code("\n".join(ns))
 
-            st.markdown("---")
             st.caption("Intestatario/registrant: spesso **redatto** (GDPR).")
 
 # ============================================================
-# TAB SCORE (normalizzato)
+# TAB SCORE (NORMALIZZATO)
 # ============================================================
 with tab_score:
     st.markdown("## Cyber Exposure Index (best-effort)")
@@ -695,10 +749,10 @@ with tab_score:
             web_points += 10
         if ssl_data and isinstance(ssl_data.get("days_left"), int) and ssl_data["days_left"] > 0:
             web_points += 10
-        web_points += min(20, header_score * 4)  # 5 header -> max 20
+        web_points += min(20, header_score * 4)  # max 20
         score += min(web_w, web_points)
 
-    # Email (solo se applicabile)
+    # Email applicabile solo se c'è almeno un segnale (MX/SPF/DMARC/DKIM)
     email_w = 35
     email_applicable = (not is_ip) and (bool(mx) or bool(spf) or bool(dmarc) or bool(dkim_found))
     if email_applicable:
