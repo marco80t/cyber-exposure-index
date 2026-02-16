@@ -4,56 +4,136 @@ import ssl
 import socket
 import ipaddress
 from datetime import datetime, timezone
-
+from urllib.parse import urlparse
 import dns.resolver
 import tldextract
 
-# ==============================================================
-# CONFIG / UI
-# ==============================================================
+# ============================================================
+# CONFIG
+# ============================================================
 st.set_page_config(page_title="Security Quick Check Pro", page_icon="🛡️", layout="wide")
-# ------------------------------------------------
-# MATRIX BACKGROUND STYLE
-# ------------------------------------------------
+
+# ============================================================
+# MATRIX UI / CSS (FUTURISTICO)
+# ============================================================
 def apply_matrix_style():
     st.markdown(
         """
         <style>
+        /* Background matrix + overlay scuro */
         .stApp {
-            background: linear-gradient(rgba(0,0,0,0.88), rgba(0,0,0,0.92)),
-                        url("assets/bg.png");
+            background:
+                radial-gradient(circle at 20% 10%, rgba(0,255,136,0.12) 0%, transparent 40%),
+                radial-gradient(circle at 80% 20%, rgba(0,255,136,0.08) 0%, transparent 40%),
+                linear-gradient(rgba(0,0,0,0.88), rgba(0,0,0,0.92)),
+                url("assets/bg.png");
             background-size: cover;
             background-position: center;
             background-attachment: fixed;
         }
 
-        h1, h2, h3 {
+        /* “Grid” tech overlay */
+        .stApp:before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background-image:
+                linear-gradient(to right, rgba(0,255,136,0.06) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0,255,136,0.05) 1px, transparent 1px);
+            background-size: 60px 60px;
+            opacity: 0.20;
+            z-index: 0;
+        }
+
+        /* Porta avanti il contenuto */
+        section.main > div { position: relative; z-index: 1; }
+
+        /* Titoli neon */
+        h1, h2, h3, h4 {
             color: #00ff88 !important;
-            text-shadow: 0 0 10px rgba(0,255,136,0.6);
+            text-shadow: 0 0 12px rgba(0,255,136,0.55);
+            letter-spacing: 0.2px;
         }
 
-        .stButton>button {
-            background-color: #00ff88;
-            color: black;
-            border-radius: 8px;
-            font-weight: 600;
+        /* Card glass */
+        .glass {
+            padding: 16px 18px;
+            border-radius: 14px;
+            border: 1px solid rgba(0,255,136,0.20);
+            background: rgba(255,255,255,0.03);
+            box-shadow: 0 0 30px rgba(0,255,136,0.07);
+            backdrop-filter: blur(8px);
         }
 
-        .stButton>button:hover {
-            background-color: #00cc6a;
-            color: white;
-        }
-
+        /* Metric box */
         .stMetric {
-            background-color: rgba(0, 255, 136, 0.05);
-            border: 1px solid rgba(0,255,136,0.25);
-            border-radius: 12px;
-            padding: 12px;
+            background: rgba(0,255,136,0.05) !important;
+            border: 1px solid rgba(0,255,136,0.22) !important;
+            border-radius: 14px !important;
+            padding: 12px !important;
         }
 
-        .stAlert {
+        /* Bottoni */
+        .stButton>button {
+            background: linear-gradient(135deg, #00ff88, #00cc6a);
+            color: #06120b;
             border-radius: 10px;
+            font-weight: 800;
+            border: 0;
+            box-shadow: 0 0 18px rgba(0,255,136,0.22);
         }
+        .stButton>button:hover {
+            filter: brightness(1.05);
+            box-shadow: 0 0 26px rgba(0,255,136,0.32);
+        }
+
+        /* Input */
+        .stTextInput input {
+            border-radius: 10px !important;
+            border: 1px solid rgba(0,255,136,0.25) !important;
+            background: rgba(255,255,255,0.03) !important;
+        }
+
+        /* Tabs */
+        button[data-baseweb="tab"] {
+            border-radius: 999px !important;
+            margin-right: 8px;
+            border: 1px solid rgba(0,255,136,0.15) !important;
+            background: rgba(255,255,255,0.02) !important;
+        }
+
+        /* Link */
+        a { color: #00ff88 !important; }
+
+        /* Piccolo */
+        .small { opacity: 0.85; font-size: 0.92rem; }
+
+        /* Radar progress (circolare finto con CSS) */
+        .radar {
+            width: 180px; height: 180px;
+            border-radius: 999px;
+            border: 1px solid rgba(0,255,136,0.35);
+            background:
+              radial-gradient(circle, rgba(0,255,136,0.12) 0%, rgba(0,255,136,0.03) 35%, transparent 70%),
+              conic-gradient(#00ff88 var(--p), rgba(255,255,255,0.07) 0);
+            box-shadow: 0 0 35px rgba(0,255,136,0.10);
+            position: relative;
+            display:flex; align-items:center; justify-content:center;
+        }
+        .radar:after{
+            content:"";
+            position:absolute; inset:14px;
+            border-radius:999px;
+            border:1px dashed rgba(0,255,136,0.20);
+        }
+        .radar span{
+            font-size: 2rem;
+            font-weight: 900;
+            color:#00ff88;
+            text-shadow: 0 0 10px rgba(0,255,136,0.45);
+        }
+
         </style>
         """,
         unsafe_allow_html=True,
@@ -61,208 +141,9 @@ def apply_matrix_style():
 
 apply_matrix_style()
 
-import base64
-from pathlib import Path
-import streamlit as st
-
-def inject_matrix_ui(bg_path: str = "assets/bg.png"):
-    # Carico bg.png e lo embeddo in CSS (così funziona anche su Streamlit Cloud)
-    bg_css = ""
-    p = Path(bg_path)
-    if p.exists():
-        b64 = base64.b64encode(p.read_bytes()).decode("utf-8")
-        ext = p.suffix.lower().replace(".", "")
-        mime = "png" if ext == "png" else "jpeg"
-        bg_css = f"""
-        .stApp {{
-          background-image:
-            radial-gradient(1200px 700px at 20% 10%, rgba(0,255,140,0.20), transparent 55%),
-            radial-gradient(900px 650px at 80% 20%, rgba(0,170,90,0.16), transparent 52%),
-            linear-gradient(180deg, #05080F, #070B12),
-            url("data:image/{mime};base64,{b64}");
-          background-size: cover;
-          background-position: center;
-          background-attachment: fixed;
-        }}
-        """
-    else:
-        # fallback se bg non c'è
-        bg_css = """
-        .stApp{
-          background:
-            radial-gradient(1200px 700px at 20% 10%, rgba(0,255,140,0.18), transparent 55%),
-            radial-gradient(900px 650px at 80% 20%, rgba(0,170,90,0.14), transparent 52%),
-            linear-gradient(180deg, #05080F, #070B12);
-        }
-        """
-
-    st.markdown(f"""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Orbitron:wght@500;700&display=swap');
-
-    :root{{
-      --bg1:#05080F;
-      --bg2:#070B12;
-      --card: rgba(255,255,255,0.06);
-      --card2: rgba(255,255,255,0.10);
-      --stroke: rgba(0,255,140,0.18);
-      --text: rgba(255,255,255,0.92);
-      --muted: rgba(255,255,255,0.68);
-      --accent: #00FF8C;      /* Matrix green */
-      --accent2:#00AA5A;      /* deep green */
-      --danger:#ff4d6d;
-      --warn:#f7b955;
-    }}
-
-    {bg_css}
-
-    /* generale */
-    .stApp {{
-      color: var(--text);
-      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-    }}
-    .block-container {{ padding-top: 1.2rem; }}
-
-    /* Sidebar */
-    section[data-testid="stSidebar"] {{
-      background: linear-gradient(180deg, rgba(5,10,18,0.88), rgba(5,10,18,0.58));
-      border-right: 1px solid rgba(0,255,140,0.16);
-      backdrop-filter: blur(10px);
-    }}
-    section[data-testid="stSidebar"] * {{
-      color: var(--text);
-    }}
-
-    /* Titoli “tech” */
-    h1, h2, h3 {{
-      font-family: Orbitron, Inter, sans-serif;
-      letter-spacing: 0.4px;
-    }}
-
-    /* Inputs */
-    .stTextInput input, .stTextArea textarea {{
-      background: rgba(255,255,255,0.06) !important;
-      border: 1px solid rgba(0,255,140,0.18) !important;
-      border-radius: 12px !important;
-      color: var(--text) !important;
-    }}
-
-    /* Button */
-    .stButton button {{
-      border-radius: 12px !important;
-      border: 1px solid rgba(0,255,140,0.35) !important;
-      background: linear-gradient(90deg, rgba(0,255,140,0.20), rgba(0,170,90,0.18)) !important;
-      color: var(--text) !important;
-      box-shadow: 0 0 0 rgba(0,255,140,0.0);
-      transition: all .2s ease;
-    }}
-    .stButton button:hover {{
-      box-shadow: 0 0 22px rgba(0,255,140,0.20);
-      transform: translateY(-1px);
-    }}
-
-    /* Tabs */
-    button[data-baseweb="tab"] {{
-      background: rgba(255,255,255,0.04) !important;
-      border: 1px solid rgba(0,255,140,0.16) !important;
-      border-radius: 999px !important;
-      margin-right: 8px !important;
-      padding: 10px 14px !important;
-    }}
-    button[data-baseweb="tab"][aria-selected="true"] {{
-      border: 1px solid rgba(0,255,140,0.38) !important;
-      box-shadow: 0 0 18px rgba(0,255,140,0.14) !important;
-    }}
-
-    /* Metric */
-    [data-testid="stMetric"] {{
-      background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(0,255,140,0.16);
-      border-radius: 16px;
-      padding: 14px 16px;
-      backdrop-filter: blur(10px);
-      box-shadow: 0 10px 28px rgba(0,0,0,0.20);
-    }}
-
-    /* Alert box */
-    div[data-testid="stAlert"] {{
-      border-radius: 14px !important;
-      border: 1px solid rgba(0,255,140,0.14) !important;
-      background: rgba(255,255,255,0.06) !important;
-      backdrop-filter: blur(10px);
-    }}
-
-    /* Card helper */
-    .neo-card {{
-      background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(0,255,140,0.16);
-      border-radius: 16px;
-      padding: 16px 18px;
-      backdrop-filter: blur(10px);
-      box-shadow: 0 10px 35px rgba(0,0,0,0.22);
-    }}
-    .neo-title {{
-      font-family: Orbitron, Inter, sans-serif;
-      letter-spacing: .4px;
-      font-size: 1.05rem;
-      margin: 0 0 8px 0;
-    }}
-    .neo-muted {{ color: var(--muted); font-size: 0.92rem; }}
-    .badge {{
-      display:inline-block; padding:2px 10px; border-radius:999px;
-      border:1px solid rgba(0,255,140,0.22);
-      font-size:0.85rem; opacity:0.92;
-      background: rgba(0,255,140,0.06);
-    }}
-    .glow {{
-      text-shadow: 0 0 14px rgba(0,255,140,0.22);
-    }}
-    </style>
-    """, unsafe_allow_html=True)
-
-def hero_matrix(title: str, subtitle: str, badge_text: str = "PASSIVE / BEST-EFFORT"):
-    st.markdown(f"""
-    <div class="neo-card">
-      <div class="neo-title glow">{title} <span class="badge">{badge_text}</span></div>
-      <div class="neo-muted">{subtitle}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-# USO:
-# inject_matrix_ui("assets/bg.png")
-# hero_matrix("Security Quick Check Pro", "Analisi su dati pubblici (HTTP / DNS / SSL). Modalità tecnica solo con autorizzazione.")
-inject_matrix_ui("assets/bg.png")
-
-hero_matrix(
-    "Security Quick Check Pro",
-    "Analisi basata su dati pubblici (HTTP / DNS / SSL). Nessun test intrusivo. Modalità tecnica solo con autorizzazione."
-)
-
-
-
-UA = {"User-Agent": "SecurityQuickCheckPro/1.0"}
-
-def load_css():
-    st.markdown(
-        """
-        <style>
-        .block-container { padding-top: 1.4rem; }
-        .metric-box {
-            padding: 14px 16px;
-            border-radius: 12px;
-            border: 1px solid rgba(49,51,63,0.18);
-            background: rgba(255,255,255,0.02);
-        }
-        .small { opacity: 0.85; font-size: 0.92rem; }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-load_css()
-
-# ==============================================================
+# ============================================================
 # SIDEBAR
-# ==============================================================
+# ============================================================
 with st.sidebar:
     st.markdown("## 🛡️ Security Quick Check Pro")
     try:
@@ -270,7 +151,7 @@ with st.sidebar:
     except Exception:
         pass
 
-    st.markdown("Verifica **passiva / best-effort** basata su **dati pubblici** (HTTP / DNS / SSL).")
+    st.markdown("Verifica **passiva / best-effort** su dati pubblici (HTTP / DNS / SSL).")
     st.markdown("---")
     st.markdown("### Contatti")
     st.markdown("🌐 **Sito:** tmconsulenza.it")
@@ -279,19 +160,21 @@ with st.sidebar:
     st.markdown("### Note legali")
     st.markdown(
         "<div class='small'>"
-        "Questo strumento non esegue test intrusivi. La modalità tecnica (porte) "
-        "effettua solo un semplice TCP connect su poche porte comuni e va usata "
-        "solo con autorizzazione del proprietario del target."
+        "• I controlli sono basati su informazioni pubbliche.<br>"
+        "• La verifica porte è opzionale e va usata <b>solo con autorizzazione</b> del proprietario.<br>"
+        "• Nessun brute-force, nessun accesso, nessun exploit."
         "</div>",
-        unsafe_allow_html=True,
+        unsafe_allow_html=True
     )
+    st.markdown("---")
+    show_geo = st.toggle("Mostra Geo/ASN (opzionale)", value=False)
+    advanced_ports = st.toggle("Abilita modalità tecnica (porte)", value=False)
+    st.markdown("### DKIM (best-effort)")
+    dkim_selector = st.text_input("Selector DKIM (opz.)", value="", placeholder="es: selector1")
 
-st.title("Security Quick Check Pro")
-st.write("Analisi su informazioni **pubbliche**. Nessun brute-force, nessun exploit, nessuna autenticazione.")
-
-# ==============================================================
+# ============================================================
 # HELPERS
-# ==============================================================
+# ============================================================
 def is_ip_target(value: str) -> bool:
     try:
         ipaddress.ip_address(value)
@@ -302,7 +185,8 @@ def is_ip_target(value: str) -> bool:
 def normalize_target(v: str) -> str:
     v = (v or "").strip().lower()
     v = v.replace("https://", "").replace("http://", "")
-    return v.split("/")[0]
+    v = v.split("/")[0]
+    return v
 
 def apex_domain(hostname: str) -> str:
     ext = tldextract.extract(hostname)
@@ -330,17 +214,13 @@ def dns_txt(name: str):
         return []
 
 def fetch_https(host: str):
-    r = requests.get(f"https://{host}", timeout=10, allow_redirects=True, headers=UA)
-    return r.url, r.status_code, r.headers
-
-def fetch_text(url: str, max_chars=2500):
-    try:
-        r = requests.get(url, timeout=8, allow_redirects=True, headers=UA)
-        if r.status_code >= 400:
-            return None
-        return r.text[:max_chars]
-    except Exception:
-        return None
+    r = requests.get(
+        f"https://{host}",
+        timeout=10,
+        allow_redirects=True,
+        headers={"User-Agent": "SecurityQuickCheckPro/1.0"},
+    )
+    return r.url, r.status_code, r.headers, r
 
 def ssl_info(host: str):
     ctx = ssl.create_default_context()
@@ -356,24 +236,10 @@ def ssl_info(host: str):
         expires = datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=timezone.utc)
         days_left = (expires - datetime.now(timezone.utc)).days
 
-    issuer = ", ".join("=".join(x) for item in cert.get("issuer", []) for x in item) or "N/D"
-    san = [v for t, v in cert.get("subjectAltName", []) if str(t).lower() == "dns"]
+    issuer = ", ".join("=".join(x) for item in cert.get("issuer", []) for x in item) if cert.get("issuer") else "N/D"
+    san = [v for t, v in cert.get("subjectAltName", []) if t.lower() == "dns"]
 
-    return {"expires": expires, "days_left": days_left, "issuer": issuer, "tls_version": tls_ver, "san": san}
-
-def get_caa(domain: str):
-    try:
-        answers = dns.resolver.resolve(domain, "CAA")
-        return [str(r) for r in answers]
-    except Exception:
-        return []
-
-def dnssec_enabled(domain: str):
-    try:
-        dns.resolver.resolve(domain, "DS")
-        return True
-    except Exception:
-        return False
+    return {"expires": expires, "days_left": days_left, "issuer": issuer, "tls": tls_ver, "san": san}
 
 def tcp_connect(host: str, port: int, timeout=1.2) -> bool:
     try:
@@ -382,529 +248,502 @@ def tcp_connect(host: str, port: int, timeout=1.2) -> bool:
     except Exception:
         return False
 
-def check_security_txt(host: str):
-    urls = [f"https://{host}/.well-known/security.txt", f"https://{host}/security.txt"]
-    for u in urls:
-        txt = fetch_text(u)
-        if txt:
-            return u, txt
-    return None, None
+def get_geo_info(ip: str):
+    try:
+        return requests.get(f"https://ipapi.co/{ip}/json/", timeout=5).json()
+    except Exception:
+        return None
 
-def check_robots_sitemap(host: str):
-    robots_url = f"https://{host}/robots.txt"
-    robots_txt = fetch_text(robots_url)
-    sitemaps = []
-    if robots_txt:
-        for line in robots_txt.splitlines():
-            if line.lower().startswith("sitemap:"):
-                sitemaps.append(line.split(":", 1)[1].strip())
-    return robots_url, robots_txt, sitemaps
+# WHOIS via RDAP (più “moderno” e spesso meglio del WHOIS classico)
+def rdap_domain(domain: str):
+    """
+    RDAP pubblico. Nota: spesso i dati registrant sono redatti (GDPR).
+    """
+    try:
+        r = requests.get(f"https://rdap.org/domain/{domain}", timeout=8)
+        if r.status_code != 200:
+            return None
+        return r.json()
+    except Exception:
+        return None
 
-def parse_hsts(hsts_value: str) -> dict:
-    out = {"max_age": None, "include_subdomains": False, "preload": False}
-    if not hsts_value:
-        return out
-    parts = [p.strip() for p in hsts_value.split(";")]
-    for p in parts:
-        pl = p.lower()
-        if pl.startswith("max-age"):
-            try:
-                out["max_age"] = int(p.split("=", 1)[1])
-            except Exception:
-                pass
-        if pl == "includesubdomains":
-            out["include_subdomains"] = True
-        if pl == "preload":
-            out["preload"] = True
-    return out
+def rdap_extract_dates(rdap_json: dict):
+    created = None
+    expires = None
+    updated = None
+    for ev in rdap_json.get("events", []):
+        action = (ev.get("eventAction") or "").lower()
+        date = ev.get("eventDate")
+        if not date:
+            continue
+        if "registration" in action:
+            created = date
+        elif "expiration" in action:
+            expires = date
+        elif "last changed" in action or "last update" in action:
+            updated = date
+    return created, updated, expires
 
-def dkim_best_effort(domain_root: str):
-    selectors = ["default", "selector1", "selector2", "google", "smtp", "mail", "dkim", "s1", "s2"]
+def best_effort_dkim(root: str, selector: str = ""):
+    # se non hai selector, proviamo alcuni comuni
+    selectors = []
+    if selector.strip():
+        selectors = [selector.strip()]
+    else:
+        selectors = ["default", "selector1", "selector2", "google", "k1", "mail", "s1", "s2"]
+
     found = []
     for s in selectors:
-        name = f"{s}._domainkey.{domain_root}"
+        name = f"{s}._domainkey.{root}"
         txts = dns_txt(name)
         for t in txts:
             if "v=dkim1" in t.lower():
                 found.append((s, t))
-                break
     return found
 
-def fingerprint_from_dns_and_headers(host: str, root: str, headers: dict):
-    hints = []
-
-    cn_host = dns_query(host, "CNAME")
-    cn_root = dns_query(root, "CNAME")
-    ns = dns_query(root, "NS")
-    dns_blob = " | ".join(cn_host + cn_root + ns).lower()
-
-    cdn_sigs = {
-        "Cloudflare": ["cloudflare", "cf-", "cf-ray"],
-        "Akamai": ["akamai", "edgesuite", "akam.net"],
-        "Fastly": ["fastly"],
-        "Imperva/Incapsula": ["incapsula", "imperva"],
-        "Azure Front Door": ["azurefd.net"],
-        "AWS CloudFront": ["cloudfront.net"],
-    }
-    for name, sigs in cdn_sigs.items():
-        if any(s in dns_blob for s in sigs):
-            hints.append(f"Possibile CDN/WAF: **{name}** (hint DNS)")
-
-    server = (headers or {}).get("Server")
-    powered = (headers or {}).get("X-Powered-By")
-    if server:
-        hints.append(f"Header **Server** presente: `{server}` (possibile leakage)")
-    if powered:
-        hints.append(f"Header **X-Powered-By** presente: `{powered}` (possibile leakage)")
-
-    if not hints:
-        hints.append("Nessun fingerprint evidente (best-effort).")
-
-    return {"cname_host": cn_host, "cname_root": cn_root, "ns": ns, "hints": list(dict.fromkeys(hints))}
-
-def geo_ip_lookup(ip: str):
-    try:
-        return requests.get(f"https://ipapi.co/{ip}/json/", timeout=5, headers=UA).json()
-    except Exception:
-        return None
-
-# ==============================================================
-# SESSION STATE
-# ==============================================================
+# ============================================================
+# STATE
+# ============================================================
 if "analyzed" not in st.session_state:
     st.session_state.analyzed = False
 if "target_value" not in st.session_state:
     st.session_state.target_value = ""
-if "advanced" not in st.session_state:
-    st.session_state.advanced = False
 
-# ==============================================================
-# INPUT
-# ==============================================================
-target_input = st.text_input(
-    "Inserisci Dominio o IP",
-    value=st.session_state.target_value,
-    placeholder="es. tmconsulenza.it oppure 1.2.3.4"
+# ============================================================
+# HEADER
+# ============================================================
+st.markdown(
+    """
+    <div class="glass">
+      <h1 style="margin:0;">Security Quick Check Pro</h1>
+      <div class="small">Analisi su dati pubblici. Nessun test intrusivo. Modalità tecnica solo con autorizzazione.</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
-go = st.button("Analizza")
+st.write("")
+
+# ============================================================
+# INPUT
+# ============================================================
+c_in1, c_in2 = st.columns([5, 1])
+with c_in1:
+    target_input = st.text_input("Inserisci Dominio o IP pubblico", value=st.session_state.target_value, placeholder="es: tmconsulenza.it oppure 1.2.3.4")
+with c_in2:
+    go = st.button("Analizza", use_container_width=True)
 
 if go and target_input:
     st.session_state.analyzed = True
     st.session_state.target_value = target_input.strip()
 
 if not st.session_state.analyzed or not st.session_state.target_value:
-    st.info("Inserisci un dominio o IP e premi *Analizza*.")
+    st.info("Inserisci un dominio/IP e premi **Analizza**.")
     st.stop()
 
+# ============================================================
+# NORMALIZE TARGET
+# ============================================================
 raw = normalize_target(st.session_state.target_value)
 is_ip = is_ip_target(raw)
-host = raw
-root = None if is_ip else apex_domain(host)
 
-# Resolve IP (best-effort)
+host = raw
+root = apex_domain(host) if not is_ip else None
+
 resolved_ip = None
 if is_ip:
     resolved_ip = host
 else:
-    arec = dns_query(host, "A")
-    if arec:
-        resolved_ip = arec[0]
+    a_records = dns_query(host, "A")
+    if a_records:
+        resolved_ip = a_records[0]
 
-st.markdown("---")
-st.subheader("Riepilogo")
-c1, c2, c3 = st.columns(3)
-with c1:
-    st.write(f"**Target:** `{host}`")
-with c2:
-    st.write(f"**Tipo:** `{'IP' if is_ip else 'Dominio'}`")
-with c3:
-    st.write(f"**IP risolto:** `{resolved_ip or 'N/D'}`")
+# ============================================================
+# SUMMARY CARD
+# ============================================================
+st.markdown("### Riepilogo")
+sumc1, sumc2, sumc3 = st.columns([2, 2, 2])
+with sumc1:
+    st.markdown('<div class="glass">', unsafe_allow_html=True)
+    st.write(f"**Target:** {host}")
+    st.write(f"**Tipo:** {'IP' if is_ip else 'Dominio'}")
+    st.markdown("</div>", unsafe_allow_html=True)
+with sumc2:
+    st.markdown('<div class="glass">', unsafe_allow_html=True)
+    st.write(f"**Apex:** {root if root else '—'}")
+    st.write(f"**IP risolto:** {resolved_ip if resolved_ip else '—'}")
+    st.markdown("</div>", unsafe_allow_html=True)
+with sumc3:
+    st.markdown('<div class="glass">', unsafe_allow_html=True)
+    if show_geo and resolved_ip:
+        geo = get_geo_info(resolved_ip)
+        if geo:
+            st.write(f"**Geo:** {geo.get('city')}, {geo.get('country_name')}")
+            st.write(f"**Org:** {geo.get('org')}")
+        else:
+            st.write("**Geo:** non disponibile")
+    else:
+        st.write("**Geo/ASN:** disattivato")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-# ==============================================================
-# TABS
-# ==============================================================
-tab_web, tab_email, tab_dns, tab_score = st.tabs(["🌐 Web", "📧 Email", "🧬 DNS & Fingerprint", "📊 Score & Report"])
+st.write("")
+tab_web, tab_email, tab_dns, tab_whois, tab_score = st.tabs(
+    ["🌐 Web", "📧 Email", "🧬 DNS", "🧾 WHOIS/RDAP", "📊 Score"]
+)
 
-# ==============================================================
+# ============================================================
+# ANALYSIS VARS
+# ============================================================
+status = None
+final_url = None
+headers = {}
+ssl_data = None
+
+spf = None
+dmarc = None
+mx = []
+dkim_found = []
+
+dnssec = False
+caa = []
+
+# ============================================================
 # TAB WEB
-# ==============================================================
+# ============================================================
 with tab_web:
     st.markdown("## 1) Web Reachability & Security Headers")
+    if is_ip:
+        st.info("Per IP: la parte Web completa richiede un hostname (dominio).")
+    else:
+        try:
+            final_url, status, headers, resp = fetch_https(host)
+            st.success(f"HTTPS raggiungibile — Status: {status}")
+            st.write(f"URL finale: **{final_url}**")
 
-    final_url = None
-    status = None
-    headers = {}
-    header_score = 0
+            st.markdown("### Security Headers (best-effort)")
+            security_headers = {
+                "Strict-Transport-Security": "HSTS",
+                "Content-Security-Policy": "CSP",
+                "X-Frame-Options": "Clickjacking",
+                "X-Content-Type-Options": "MIME sniffing",
+                "Referrer-Policy": "Referrer control",
+            }
+            header_score = 0
+            for h, label in security_headers.items():
+                if h in headers:
+                    st.success(f"✔ {label} — {h} presente")
+                    header_score += 1
+                else:
+                    st.warning(f"⚠ {label} — {h} mancante")
 
-    try:
-        final_url, status, headers = fetch_https(host)
-        st.success(f"HTTPS raggiungibile (status: {status})")
-        st.write(f"URL finale: **{final_url}**")
-    except Exception:
-        st.info("HTTPS non verificabile (best-effort).")
-
-    security_headers = [
-        ("Strict-Transport-Security", "HSTS"),
-        ("Content-Security-Policy", "CSP"),
-        ("X-Frame-Options", "XFO"),
-        ("X-Content-Type-Options", "XCTO"),
-        ("Referrer-Policy", "Referrer-Policy"),
-        ("Permissions-Policy", "Permissions-Policy"),
-        ("Cross-Origin-Opener-Policy", "COOP"),
-        ("Cross-Origin-Embedder-Policy", "COEP"),
-        ("Cross-Origin-Resource-Policy", "CORP"),
-    ]
-
-    st.markdown("### Security Headers (best-effort)")
-    if headers:
-        for h, label in security_headers:
-            if h in headers:
-                st.success(f"✔ {label} presente")
-                header_score += 1
+            leak = []
+            if headers.get("Server"):
+                leak.append(f"Server: {headers.get('Server')}")
+            if headers.get("X-Powered-By"):
+                leak.append(f"X-Powered-By: {headers.get('X-Powered-By')}")
+            if leak:
+                st.warning("Possibile **information leakage**: " + " | ".join(leak))
             else:
-                st.warning(f"⚠ {label} mancante")
-        st.caption(f"Headers: {header_score}/{len(security_headers)}")
+                st.success("Nessun header tipico di leakage rilevato.")
 
-        if "Strict-Transport-Security" in headers:
-            hsts = parse_hsts(headers.get("Strict-Transport-Security", ""))
-            st.markdown("### HSTS (dettagli)")
-            st.write(f"max-age: `{hsts['max_age']}` | includeSubDomains: `{hsts['include_subdomains']}` | preload: `{hsts['preload']}`")
+        except Exception as e:
+            st.error("Impossibile analizzare via HTTPS (host non raggiungibile / TLS / redirect).")
+            header_score = 0
 
-        # Leakage (solo segnale)
-        if "Server" in headers or "X-Powered-By" in headers:
-            server = headers.get("Server", "")
-            powered = headers.get("X-Powered-By", "")
-            st.warning(f"Possibile leakage: `Server={server}` `X-Powered-By={powered}`")
-    else:
-        st.caption("Header non disponibili (HTTPS non verificato).")
-
-    st.markdown("## 2) SSL/TLS (certificato)")
+    st.markdown("---")
+    st.markdown("## 2) SSL / TLS (best-effort)")
     try:
-        s = ssl_info(host)
-        dl = s.get("days_left")
-        if dl is None:
-            st.info("Scadenza certificato non determinabile.")
-        elif dl < 0:
-            st.error(f"Certificato SCADUTO ({dl} giorni).")
-        elif dl < 30:
-            st.warning(f"Certificato in scadenza: {dl} giorni.")
+        ssl_data = ssl_info(host)
+        if ssl_data["days_left"] is None:
+            st.warning("Scadenza certificato non determinabile.")
+        elif ssl_data["days_left"] < 0:
+            st.error(f"Certificato **SCADUTO** ({ssl_data['days_left']} giorni).")
+        elif ssl_data["days_left"] < 30:
+            st.warning(f"Certificato in scadenza: **{ssl_data['days_left']} giorni**.")
         else:
-            st.success(f"Certificato valido: scade tra {dl} giorni.")
-        st.write(f"Issuer: `{s.get('issuer')}`")
-        st.write(f"TLS version (handshake): `{s.get('tls_version')}`")
-        if s.get("expires"):
-            st.write(f"Scadenza: `{s['expires'].strftime('%Y-%m-%d %H:%M UTC')}`")
+            st.success(f"Certificato valido: scade tra **{ssl_data['days_left']} giorni**.")
+
+        if ssl_data.get("expires"):
+            st.write(f"Scadenza: **{ssl_data['expires'].strftime('%Y-%m-%d %H:%M UTC')}**")
+        st.write(f"TLS: **{ssl_data.get('tls','N/D')}**")
+        st.write(f"Issuer: **{ssl_data.get('issuer','N/D')}**")
     except Exception:
-        st.info("SSL non verificabile (best-effort).")
+        st.error("Impossibile verificare SSL (porta 443 non disponibile o handshake fallito).")
 
-    st.markdown("## 3) Public Security Files (security.txt / robots / sitemap)")
-    if not is_ip:
-        sec_url, sec_txt = check_security_txt(host)
-        if sec_txt:
-            st.success("✔ security.txt trovato")
-            st.write(f"URL: {sec_url}")
-            st.code(sec_txt)
-        else:
-            st.info("security.txt non trovato (best practice).")
-
-        robots_url, robots_txt, sitemaps = check_robots_sitemap(host)
-        if robots_txt:
-            st.success("✔ robots.txt trovato")
-            st.write(f"URL: {robots_url}")
-            st.code(robots_txt)
-            if sitemaps:
-                st.success("✔ Sitemap dichiarate")
-                for sm in sitemaps:
-                    st.write(f"- {sm}")
-        else:
-            st.info("robots.txt non trovato (non è obbligatorio).")
+    st.markdown("---")
+    st.markdown("## 3) Modalità tecnica (porte) — solo con autorizzazione")
+    if not advanced_ports:
+        st.info("Attiva **“Abilita modalità tecnica (porte)”** nella sidebar per mostrare la sezione.")
     else:
-        st.info("Questi file richiedono un dominio.")
+        st.warning("Best-effort: TCP connect su poche porte. Nessuno scan aggressivo.")
+        common_ports = [
+            (21, "FTP"),
+            (22, "SSH"),
+            (25, "SMTP"),
+            (80, "HTTP"),
+            (443, "HTTPS"),
+            (3306, "MySQL"),
+            (3389, "RDP"),
+        ]
+        open_ports = 0
+        for p, name in common_ports:
+            if tcp_connect(host, p):
+                st.warning(f"⚠ Porta {p} ({name}) **aperta** (best-effort)")
+                open_ports += 1
+            else:
+                st.success(f"✔ Porta {p} ({name}) chiusa")
+        if open_ports == 0:
+            st.success("✔ Nessuna porta comune risulta esposta (best-effort).")
+        else:
+            st.warning("⚠ Porte esposte: verifica firewall/VPN/ACL e che sia voluto.")
 
-# ==============================================================
+# ============================================================
 # TAB EMAIL
-# ==============================================================
+# ============================================================
 with tab_email:
-    st.markdown("## 4) Email Security (MX / SPF / DMARC / DKIM best-effort)")
-
+    st.markdown("## Email Security (MX / SPF / DMARC / DKIM best-effort)")
     if is_ip:
-        st.info("Per email security serve un dominio.")
-        st.stop()
-
-    mx = dns_query(root, "MX")
-    if not mx:
-        st.info("Nessun record MX rilevato. **Possibile** che il dominio non gestisca posta. (Email = N/A)")
-        st.stop()
-
-    st.success(f"✔ Record MX trovati: {len(mx)}")
-    st.code("\n".join(mx))
-
-    txt_root = dns_txt(root)
-    spf = next((t for t in txt_root if t.lower().startswith("v=spf1")), None)
-    dmarc = next((t for t in dns_txt(f"_dmarc.{root}") if t.lower().startswith("v=dmarc1")), None)
-
-    st.markdown("### SPF")
-    if spf:
-        st.success("✔ SPF presente")
-        st.code(spf)
+        st.info("Per IP: la sezione email non è applicabile senza dominio.")
     else:
-        st.warning("⚠ SPF mancante (rischio spoofing se il dominio invia posta).")
+        mx = dns_query(root, "MX")
+        if mx:
+            st.success(f"MX trovati: {len(mx)}")
+            st.code("\n".join(mx))
+        else:
+            st.info("Nessun record MX: il dominio potrebbe non gestire posta (NON è un fail di sicurezza).")
 
-    st.markdown("### DMARC")
-    if dmarc:
-        st.success("✔ DMARC presente")
-        st.code(dmarc)
-    else:
-        st.warning("⚠ DMARC mancante (monitoring/anti-abuso limitato se il dominio invia posta).")
+        txts = dns_txt(root)
+        spf = next((t for t in txts if t.lower().startswith("v=spf1")), None)
+        dmarc = next((t for t in dns_txt(f"_dmarc.{root}") if t.lower().startswith("v=dmarc1")), None)
 
-    st.markdown("### DKIM (best-effort)")
-    dkim = dkim_best_effort(root)
-    if dkim:
-        st.success(f"✔ DKIM trovato (selector comuni): {len(dkim)}")
-        for sel, rec in dkim:
-            st.write(f"Selector: `{sel}`")
-            st.code(rec)
-    else:
-        st.info("DKIM non trovato nei selector comuni (potrebbe esserci con selector custom).")
+        st.markdown("### SPF")
+        if spf:
+            st.success("✔ SPF presente")
+            st.code(spf)
+        else:
+            st.warning("⚠ SPF assente (se il dominio invia email è un rischio spoofing)")
 
-# ==============================================================
-# TAB DNS & FINGERPRINT
-# ==============================================================
+        st.markdown("### DMARC")
+        if dmarc:
+            st.success("✔ DMARC presente")
+            st.code(dmarc)
+        else:
+            st.warning("⚠ DMARC assente (se il dominio invia email, mancano policy e reporting)")
+
+        st.markdown("### DKIM (best-effort)")
+        dkim_found = best_effort_dkim(root, dkim_selector)
+        if dkim_found:
+            st.success(f"✔ DKIM trovato ({len(dkim_found)} record)")
+            for sel, rec in dkim_found[:5]:
+                st.write(f"Selector: **{sel}**")
+                st.code(rec)
+            if len(dkim_found) > 5:
+                st.info("Altri record DKIM trovati (troncati in output).")
+        else:
+            st.info("DKIM non rilevato (può essere perché il selector è diverso).")
+            st.caption("Suggerimento: se sai il selector del provider (es. Google: selector1/selector2) inseriscilo in sidebar.")
+
+# ============================================================
+# TAB DNS
+# ============================================================
 with tab_dns:
-    st.markdown("## 5) DNS Hardening (DNSSEC / CAA)")
-
+    st.markdown("## DNS Hardening (DNSSEC / CAA)")
     if is_ip:
-        st.info("DNS hardening richiede un dominio.")
+        st.info("Per IP: DNSSEC/CAA non applicabili senza dominio.")
     else:
-        dnssec = dnssec_enabled(root)
-        caa = get_caa(root)
+        dnssec = True if dns_query(root, "DS") else False
+        caa = dns_query(root, "CAA")
 
         if dnssec:
-            st.success("✔ DNSSEC: record DS trovato (best-effort: zona probabilmente firmata)")
+            st.success("✔ DNSSEC: record DS trovato (best-effort)")
         else:
-            st.info("DNSSEC non rilevato (comune).")
+            st.warning("⚠ DNSSEC: record DS non trovato")
 
         if caa:
             st.success("✔ CAA presente")
             st.code("\n".join(caa))
         else:
-            st.info("CAA non presente (best-effort).")
+            st.warning("⚠ CAA assente")
 
-        st.markdown("## 6) Fingerprint (CDN/WAF/Stack hints) — passivo")
-        h = {}
+        st.markdown("---")
+        st.markdown("### SaaS / TXT footprint (soft)")
+        txts = dns_txt(root)
+        hints = []
+        sigs = {
+            "google-site-verification": "Google (verification)",
+            "ms=": "Microsoft (verification)",
+            "atlassian-domain-verification": "Atlassian",
+            "v=spf1": "Email (SPF)",
+            "stripe-verification": "Stripe",
+        }
+        for t in txts:
+            tl = t.lower()
+            for k, v in sigs.items():
+                if k in tl:
+                    hints.append(v)
+        hints = sorted(list(set(hints)))
+        if hints:
+            st.info("Possibili servizi rilevati: " + ", ".join(hints))
+        else:
+            st.caption("Nessuna impronta comune trovata nei TXT (ok).")
+
+# ============================================================
+# TAB WHOIS/RDAP
+# ============================================================
+with tab_whois:
+    st.markdown("## WHOIS / RDAP (best-effort)")
+    if is_ip:
+        st.info("WHOIS dominio non applicabile a un IP qui (servirebbe WHOIS ASN/RIR separato).")
+    else:
+        rd = rdap_domain(root)
+        if not rd:
+            st.warning("RDAP non disponibile o non risponde per questo dominio.")
+        else:
+            created, updated, expires = rdap_extract_dates(rd)
+            registrar = rd.get("registrarName") or rd.get("entities", [{}])[0].get("vcardArray", ["", []])
+
+            st.markdown("### Dati principali")
+            cA, cB, cC = st.columns(3)
+            with cA:
+                st.metric("Creato", (created or "N/D")[:10])
+            with cB:
+                st.metric("Aggiornato", (updated or "N/D")[:10])
+            with cC:
+                st.metric("Scadenza", (expires or "N/D")[:10])
+
+            st.markdown("### Registrar / Status / Nameserver")
+            reg_name = rd.get("registrarName") or "N/D"
+            st.write(f"**Registrar:** {reg_name}")
+
+            statuses = rd.get("status", [])
+            if statuses:
+                st.write("**Status:**")
+                st.code("\n".join(statuses))
+            else:
+                st.caption("Status non disponibili.")
+
+            ns = [n.get("ldhName") for n in rd.get("nameservers", []) if n.get("ldhName")]
+            if ns:
+                st.write("**Nameserver:**")
+                st.code("\n".join(ns))
+            else:
+                st.caption("Nameserver non disponibili.")
+
+            st.markdown("---")
+            st.caption("Intestatario/registrant: spesso **redatto** (GDPR). Se il registry lo fornisce, apparirà nei dati RDAP.")
+            # Mostra solo un minimo (senza spammare)
+            ent = rd.get("entities", [])
+            public_roles = []
+            for e in ent:
+                roles = e.get("roles", [])
+                if roles:
+                    public_roles.extend(roles)
+            if public_roles:
+                st.write("Ruoli presenti nel RDAP:")
+                st.code(", ".join(sorted(set(public_roles))))
+
+# ============================================================
+# TAB SCORE
+# ============================================================
+with tab_score:
+    st.markdown("## Cyber Exposure Index (best-effort)")
+    # Score che NON penalizza se non hai posta o non hai sito
+    # Logica: se un “modulo” non è applicabile => non pesa sul totale.
+    score = 0
+    weight_total = 0
+
+    # Web module (solo se dominio)
+    web_w = 40
+    if not is_ip:
+        weight_total += web_w
+        web_points = 0
+        if status in (200, 301, 302, 307, 308):
+            web_points += 10
+        if ssl_data and isinstance(ssl_data.get("days_left"), int) and ssl_data["days_left"] > 0:
+            web_points += 10
+        # headers: fino a 20
         try:
-            _, _, h = fetch_https(host)
+            # header_score definito nella tab web (se errore, ricavo qui)
+            sec_headers = ["Strict-Transport-Security", "Content-Security-Policy", "X-Frame-Options", "X-Content-Type-Options", "Referrer-Policy"]
+            hs = 0
+            for h in sec_headers:
+                if h in headers:
+                    hs += 1
+            web_points += min(20, hs * 4)  # 5 headers -> max 20
         except Exception:
             pass
+        score += min(web_w, web_points)
 
-        fp = fingerprint_from_dns_and_headers(host, root, h)
+    # Email module (solo se hai MX o se trovi SPF/DMARC)
+    email_w = 35
+    email_applicable = (not is_ip) and (bool(mx) or bool(spf) or bool(dmarc) or bool(dkim_found))
+    if email_applicable:
+        weight_total += email_w
+        ep = 0
+        if spf: ep += 10
+        if dmarc:
+            ep += 15
+            dl = dmarc.lower()
+            if "p=quarantine" in dl: ep += 5
+            if "p=reject" in dl: ep += 10
+        if dkim_found: ep += 10
+        score += min(email_w, ep)
 
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown("### DNS")
-            if fp["cname_host"]:
-                st.write("CNAME host:")
-                st.code("\n".join(fp["cname_host"]))
-            if fp["cname_root"]:
-                st.write("CNAME root:")
-                st.code("\n".join(fp["cname_root"]))
-            if fp["ns"]:
-                st.write("NS:")
-                st.code("\n".join(fp["ns"]))
-            if not fp["cname_host"] and not fp["cname_root"] and not fp["ns"]:
-                st.info("Nessun record CNAME/NS leggibile (best-effort).")
-        with c2:
-            st.markdown("### Hints")
-            for hh in fp["hints"]:
-                st.write(f"- {hh}")
+    # DNS module (solo se dominio)
+    dns_w = 25
+    if not is_ip:
+        weight_total += dns_w
+        dp = 0
+        if dnssec: dp += 10
+        if caa: dp += 10
+        score += min(dns_w, dp)
 
-    st.markdown("## 7) Geo-IP (opzionale)")
-    st.caption("OFF di default. Usa un servizio terzo (ipapi). Non influisce sul punteggio.")
-    enable_geo = st.toggle("Mostra Geo-IP (servizio terzo, best-effort)", value=False)
+    if weight_total == 0:
+        st.info("Score non calcolabile per questo target (mancano moduli applicabili).")
+        st.stop()
 
-    if enable_geo and resolved_ip:
-        geo = geo_ip_lookup(resolved_ip)
-        if isinstance(geo, dict) and geo:
-            st.success("Geo-IP (best-effort)")
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                st.metric("Paese", geo.get("country_name") or "N/D")
-            with c2:
-                st.metric("Città", geo.get("city") or "N/D")
-            with c3:
-                st.metric("Org/ISP", geo.get("org") or geo.get("asn") or "N/D")
-            st.caption("Nota: può riflettere POP/CDN/ISP e non la sede reale.")
-        else:
-            st.info("Geo-IP non disponibile (best-effort).")
-    elif enable_geo and not resolved_ip:
-        st.info("Nessun IP disponibile per Geo-IP.")
+    final = int(round((score / weight_total) * 100))
 
-# ==============================================================
-# TAB SCORE & REPORT
-# ==============================================================
-with tab_score:
-    st.markdown("## 8) Modalità tecnica (solo con autorizzazione)")
-    st.caption("Abilita controlli aggiuntivi best-effort. Solo TCP connect su poche porte comuni.")
-
-    st.session_state.advanced = st.checkbox(
-        "Modalità tecnica avanzata (richiede autorizzazione del proprietario)",
-        value=st.session_state.advanced,
-        key="advanced_checkbox",
+    # Radar
+    st.markdown(
+        f"""
+        <div class="glass" style="display:flex; gap:22px; align-items:center; justify-content:space-between; flex-wrap:wrap;">
+          <div>
+            <div class="small">Punteggio normalizzato sui moduli applicabili</div>
+            <h2 style="margin:6px 0 0 0;">{final}/100</h2>
+            <div class="small">Web/Email/DNS: pesano solo se applicabili (niente “falsi allarmi” se non hai posta o sito).</div>
+          </div>
+          <div class="radar" style="--p: {final}%;">
+            <span>{final}</span>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-    advanced = st.session_state.advanced
 
-    st.markdown("### 9) Exposure — Porte comuni (best-effort)")
-    open_ports = None
-    if not advanced:
-        st.info("Attiva la modalità tecnica avanzata per visualizzare i controlli sulle porte.")
-    else:
-        st.info("Controllo leggero: solo TCP connect. Nessun tentativo di accesso/autenticazione.")
-        common_ports = [(21, "FTP"), (22, "SSH"), (25, "SMTP"), (80, "HTTP"), (443, "HTTPS"), (3306, "MySQL"), (3389, "RDP")]
-        open_ports = 0
-        for p, name in common_ports:
-            if tcp_connect(host, p):
-                st.warning(f"⚠ Porta {p} ({name}) aperta (best-effort)")
-                open_ports += 1
-            else:
-                st.success(f"✔ Porta {p} ({name}) chiusa")
-
-        if open_ports == 0:
-            st.success("✔ Nessuna porta comune risulta esposta (best-effort).")
-        else:
-            st.warning("⚠ Alcune porte risultano esposte: verifica protezioni (firewall/VPN/ACL).")
-
-    st.markdown("## 10) Cyber Exposure Index (best-effort)")
-
-    # ---- Scoring FAIR:
-    # - Web non raggiungibile => "non valutabile" => penalità minima
-    # - Email senza MX => N/A => non penalizza (neutral)
-    # - Porte contano solo se advanced (se no non entrano)
-
-    web_score = 0      # max 40
-    email_score = 0    # max 35
-    dns_score = 0      # max 25
-
-    # Web
-    status = None
-    headers = {}
-    header_score = 0
-    ssl_days = None
-
-    try:
-        _, status, headers = fetch_https(host)
-    except Exception:
-        pass
-
-    try:
-        s = ssl_info(host)
-        ssl_days = s.get("days_left")
-    except Exception:
-        pass
-
-    if status in (200, 301, 302, 307, 308):
-        web_score += 10
-    else:
-        web_score += 3  # non valutabile
-
-    if isinstance(ssl_days, int) and ssl_days > 0:
-        web_score += 10
-    else:
-        web_score += 3  # non valutabile
-
-    header_list = [
-        "Strict-Transport-Security",
-        "Content-Security-Policy",
-        "X-Frame-Options",
-        "X-Content-Type-Options",
-        "Referrer-Policy",
-        "Permissions-Policy",
-        "Cross-Origin-Opener-Policy",
-        "Cross-Origin-Embedder-Policy",
-        "Cross-Origin-Resource-Policy",
-    ]
-    if headers:
-        for hh in header_list:
-            if hh in headers:
-                header_score += 1
-        web_score += min(20, int((header_score / len(header_list)) * 20))
-    else:
-        web_score += 5
-
-    # Email (solo se dominio)
-    if is_ip:
-        email_score += 20  # N/A neutral
-    else:
-        mx = dns_query(root, "MX")
-        if not mx:
-            email_score += 20  # N/A neutral
-        else:
-            txt_root = dns_txt(root)
-            spf = next((t for t in txt_root if t.lower().startswith("v=spf1")), None)
-            dmarc = next((t for t in dns_txt(f"_dmarc.{root}") if t.lower().startswith("v=dmarc1")), None)
-
-            if spf:
-                email_score += 10
-            if dmarc:
-                email_score += 15
-                dl = dmarc.lower()
-                if "p=quarantine" in dl:
-                    email_score += 5
-                if "p=reject" in dl:
-                    email_score += 10
-
-    # DNS (solo se dominio)
-    if is_ip:
-        dns_score += 12
-    else:
-        dnssec = dnssec_enabled(root)
-        caa = get_caa(root)
-        dns_score += 10 if dnssec else 5
-        dns_score += 10 if caa else 5
-        dns_score = min(dns_score, 25)
-
-    # Ports penalty (only if advanced)
-    ports_penalty = 0
-    if advanced and isinstance(open_ports, int):
-        if open_ports >= 3:
-            ports_penalty = 8
-        elif open_ports == 2:
-            ports_penalty = 5
-        elif open_ports == 1:
-            ports_penalty = 2
-
-    total = min(max(web_score + email_score + dns_score - ports_penalty, 0), 100)
-
+    st.write("")
     c1, c2, c3 = st.columns(3)
     with c1:
-        st.metric("Web", f"{web_score}/40")
+        st.metric("Score grezzo", f"{int(score)}/{weight_total}")
     with c2:
-        st.metric("Email", f"{email_score}/35")
+        st.metric("Moduli attivi", f"{int((weight_total>0)) + int(email_applicable) + int((not is_ip))}")
     with c3:
-        st.metric("DNS", f"{dns_score}/25")
+        if final < 40:
+            st.error("Livello: ALTO")
+        elif final < 70:
+            st.warning("Livello: MEDIO")
+        else:
+            st.success("Livello: BASSO")
 
-    st.markdown(f"<div class='metric-box'><b>Punteggio Totale:</b> {total}/100</div>", unsafe_allow_html=True)
+    st.markdown("---")
+    report = f"""Security Quick Check Pro
+Target: {host}
+Apex: {root if root else '-'}
+IP: {resolved_ip if resolved_ip else '-'}
+Data: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+Score: {final}/100
 
-    if total < 40:
-        st.error("Livello di esposizione: ALTO (best-effort)")
-    elif total < 70:
-        st.warning("Livello di esposizione: MEDIO (best-effort)")
-    else:
-        st.success("Livello di esposizione: BASSO (best-effort)")
-
-    st.markdown("### Report rapido (testo)")
-    report_lines = [
-        "Security Quick Check Pro - Report (best-effort)",
-        f"Data: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-        f"Target: {host}",
-        f"Tipo: {'IP' if is_ip else 'Dominio'}",
-        f"IP risolto: {resolved_ip or 'N/D'}",
-        f"Score: {total}/100",
-        "",
-        "Nota legale: analisi passiva. Modalità tecnica porte richiede autorizzazione."
-    ]
-    report_text = "\n".join(report_lines)
-
-    st.download_button("Scarica Report Rapido", report_text, file_name="security_quick_check_report.txt")
-
-
-
+DISCLAIMER:
+- Analisi basata su dati pubblici/best-effort.
+- Scansione porte solo con autorizzazione.
+"""
+    st.download_button("📥 Scarica report (txt)", report, file_name="security_report.txt")
