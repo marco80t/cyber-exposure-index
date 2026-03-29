@@ -12,24 +12,24 @@ import tldextract
 # ============================================================
 # CONFIG
 # ============================================================
-st.set_page_config(page_title="Security Quick Check Pro", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="Cyber Exposure Index", page_icon="🛡️", layout="wide")
 
 CONTACT_SITE = "tmconsulenza.it"
 CONTACT_MAIL = "info@tmconsulenza.it"
-UA = "SecurityQuickCheckPro/1.0"
+UA = "CyberExposureIndex/1.0"
 
 # ============================================================
-# MATRIX UI / CSS (fix caselle bianche)
+# PREMIUM UI / CSS
 # ============================================================
-def apply_matrix_style():
+def apply_premium_style():
     st.markdown(
         """
         <style>
         .stApp {
             background:
-                radial-gradient(circle at 20% 10%, rgba(0,255,136,0.12) 0%, transparent 40%),
-                radial-gradient(circle at 80% 20%, rgba(0,255,136,0.08) 0%, transparent 40%),
-                linear-gradient(rgba(0,0,0,0.88), rgba(0,0,0,0.92)),
+                radial-gradient(circle at 16% 10%, rgba(34,211,238,0.10) 0%, transparent 34%),
+                radial-gradient(circle at 84% 16%, rgba(245,130,0,0.10) 0%, transparent 30%),
+                linear-gradient(135deg, rgba(6,10,20,0.96), rgba(11,18,32,0.96)),
                 url("assets/bg.png");
             background-size: cover;
             background-position: center;
@@ -41,103 +41,151 @@ def apply_matrix_style():
             inset: 0;
             pointer-events: none;
             background-image:
-                linear-gradient(to right, rgba(0,255,136,0.06) 1px, transparent 1px),
-                linear-gradient(to bottom, rgba(0,255,136,0.05) 1px, transparent 1px);
-            background-size: 60px 60px;
-            opacity: 0.18;
+                linear-gradient(to right, rgba(34,211,238,0.04) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(34,211,238,0.03) 1px, transparent 1px);
+            background-size: 56px 56px;
+            opacity: 0.14;
             z-index: 0;
         }
         section.main > div { position: relative; z-index: 1; }
 
         /* SIDEBAR */
         [data-testid="stSidebar"] {
-            background: rgba(8, 14, 11, 0.96) !important;
-            border-right: 1px solid rgba(0,255,136,0.22);
+            background: rgba(8, 12, 24, 0.96) !important;
+            border-right: 1px solid rgba(255,255,255,0.08);
         }
         [data-testid="stSidebar"] * { color: rgba(235,255,245,0.92) !important; }
-        [data-testid="stSidebar"] a { color: #00ff88 !important; }
+        [data-testid="stSidebar"] a { color: #22d3ee !important; }
         [data-testid="stSidebar"] .stMarkdown h1,
         [data-testid="stSidebar"] .stMarkdown h2,
         [data-testid="stSidebar"] .stMarkdown h3 {
-            color: #00ff88 !important;
-            text-shadow: 0 0 10px rgba(0,255,136,0.45);
+            color: #ffffff !important;
+            text-shadow: none;
         }
-        [data-testid="stSidebar"] hr { border-color: rgba(0,255,136,0.18) !important; }
+        [data-testid="stSidebar"] hr { border-color: rgba(255,255,255,0.10) !important; }
 
         /* GLOBAL TEXT */
         html, body, [class*="st-"], .stMarkdown, .stText, .stCaption, .stWrite {
-            color: rgba(235,255,245,0.92) !important;
+            color: rgba(226,232,240,0.95) !important;
         }
         h1, h2, h3, h4 {
-            color: #00ff88 !important;
-            text-shadow: 0 0 12px rgba(0,255,136,0.55);
+            color: #ffffff !important;
+            text-shadow: none;
         }
         .small { opacity: 0.85; font-size: 0.92rem; }
 
+        .hero-card {
+            padding: 24px 26px;
+            border-radius: 22px;
+            border: 1px solid rgba(255,255,255,0.08);
+            background:
+                radial-gradient(circle at top right, rgba(245,130,0,0.14), transparent 24%),
+                radial-gradient(circle at bottom left, rgba(34,211,238,0.10), transparent 28%),
+                linear-gradient(135deg, rgba(11,18,32,0.88), rgba(15,23,42,0.78));
+            box-shadow:
+                0 20px 60px rgba(0,0,0,0.22),
+                inset 0 1px 0 rgba(255,255,255,0.04);
+            backdrop-filter: blur(12px);
+        }
+        .hero-eyebrow {
+            color: #ff9a1f !important;
+            text-transform: uppercase;
+            letter-spacing: .18em;
+            font-size: .85rem;
+            font-weight: 800;
+            margin-bottom: 12px;
+        }
+        .hero-title {
+            color: #ffffff !important;
+            font-size: clamp(2rem, 3vw, 3.6rem);
+            line-height: .98;
+            font-weight: 900;
+            margin: 0 0 14px 0;
+        }
+        .hero-sub {
+            color: rgba(226,232,240,0.92) !important;
+            font-size: 1.05rem;
+            line-height: 1.65;
+            margin-bottom: 14px;
+            max-width: 760px;
+        }
+        .hero-note {
+            color: rgba(191,219,254,0.88) !important;
+            font-size: .92rem;
+            line-height: 1.6;
+            max-width: 760px;
+        }
+
         /* GLASS */
         .glass {
-            padding: 16px 18px;
-            border-radius: 14px;
-            border: 1px solid rgba(0,255,136,0.28);
-            background: rgba(10, 18, 14, 0.58);
-            box-shadow: 0 0 30px rgba(0,255,136,0.10);
-            backdrop-filter: blur(10px);
+            padding: 18px 20px;
+            border-radius: 18px;
+            border: 1px solid rgba(255,255,255,0.08);
+            background:
+                radial-gradient(circle at top left, rgba(34,211,238,0.10), transparent 24%),
+                radial-gradient(circle at bottom right, rgba(245,130,0,0.10), transparent 26%),
+                linear-gradient(135deg, rgba(11,18,32,0.82), rgba(15,23,42,0.72));
+            box-shadow:
+                0 18px 48px rgba(0,0,0,0.18),
+                inset 0 1px 0 rgba(255,255,255,0.04);
+            backdrop-filter: blur(12px);
         }
-        .glass * { color: rgba(235,255,245,0.94) !important; }
+        .glass * { color: rgba(226,232,240,0.95) !important; }
 
         /* METRICS */
         [data-testid="stMetric"] {
-            background: rgba(10, 18, 14, 0.58) !important;
-            border: 1px solid rgba(0,255,136,0.28) !important;
-            border-radius: 14px !important;
+            background:
+                linear-gradient(135deg, rgba(11,18,32,0.78), rgba(15,23,42,0.72)) !important;
+            border: 1px solid rgba(255,255,255,0.08) !important;
+            border-radius: 16px !important;
             padding: 12px !important;
         }
 
         /* INPUTS */
-        .stTextInput label { color: rgba(235,255,245,0.85) !important; }
+        .stTextInput label { color: rgba(226,232,240,0.90) !important; }
         .stTextInput input {
-            color: rgba(235,255,245,0.95) !important;
-            border-radius: 10px !important;
-            border: 1px solid rgba(0,255,136,0.28) !important;
-            background: rgba(10, 18, 14, 0.58) !important;
+            color: rgba(226,232,240,0.96) !important;
+            border-radius: 12px !important;
+            border: 1px solid rgba(255,255,255,0.10) !important;
+            background: rgba(11, 18, 32, 0.72) !important;
         }
 
         /* TABS */
         button[data-baseweb="tab"] {
             border-radius: 999px !important;
             margin-right: 8px;
-            border: 1px solid rgba(0,255,136,0.22) !important;
-            background: rgba(10, 18, 14, 0.35) !important;
-            color: rgba(235,255,245,0.92) !important;
+            border: 1px solid rgba(255,255,255,0.08) !important;
+            background: rgba(11, 18, 32, 0.55) !important;
+            color: rgba(226,232,240,0.95) !important;
         }
         button[data-baseweb="tab"][aria-selected="true"] {
-            background: rgba(0,255,136,0.14) !important;
-            box-shadow: 0 0 18px rgba(0,255,136,0.20) !important;
+            background: linear-gradient(135deg, rgba(34,211,238,0.18), rgba(255,122,0,0.10)) !important;
+            box-shadow: 0 0 18px rgba(34,211,238,0.12) !important;
         }
 
         /* BUTTONS */
         .stButton>button {
-            background: linear-gradient(135deg, #00ff88, #00cc6a);
-            color: #06120b !important;
-            border-radius: 10px;
+            background: linear-gradient(135deg, #ff7a00, #ffb11f);
+            color: #ffffff !important;
+            border-radius: 12px;
             font-weight: 900;
             border: 0;
-            box-shadow: 0 0 18px rgba(0,255,136,0.22);
+            box-shadow: 0 14px 30px rgba(255,122,0,0.20);
         }
         .stButton>button:hover {
             filter: brightness(1.05);
-            box-shadow: 0 0 26px rgba(0,255,136,0.32);
+            box-shadow: 0 18px 36px rgba(255,122,0,0.28);
         }
 
         /* RADAR */
         .radar {
             width: 180px; height: 180px;
             border-radius: 999px;
-            border: 1px solid rgba(0,255,136,0.35);
+            border: 1px solid rgba(34,211,238,0.28);
             background:
-              radial-gradient(circle, rgba(0,255,136,0.12) 0%, rgba(0,255,136,0.03) 35%, transparent 70%),
-              conic-gradient(#00ff88 var(--p), rgba(255,255,255,0.07) 0);
-            box-shadow: 0 0 35px rgba(0,255,136,0.10);
+              radial-gradient(circle, rgba(34,211,238,0.14) 0%, rgba(34,211,238,0.03) 35%, transparent 70%),
+              conic-gradient(#22d3ee var(--p), rgba(255,255,255,0.07) 0);
+            box-shadow: 0 0 35px rgba(34,211,238,0.10);
             position: relative;
             display:flex; align-items:center; justify-content:center;
         }
@@ -145,44 +193,44 @@ def apply_matrix_style():
             content:"";
             position:absolute; inset:14px;
             border-radius:999px;
-            border:1px dashed rgba(0,255,136,0.20);
+            border:1px dashed rgba(34,211,238,0.18);
         }
         .radar span{
             font-size: 2rem;
             font-weight: 900;
-            color:#00ff88 !important;
-            text-shadow: 0 0 10px rgba(0,255,136,0.45);
+            color:#ffffff !important;
+            text-shadow: none;
         }
 
         /* REMEDIATION CARDS */
         .fix-card {
-            padding: 14px 16px;
-            border-radius: 14px;
-            border: 1px solid rgba(0,255,136,0.22);
-            background: rgba(10, 18, 14, 0.52);
+            padding: 16px 18px;
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.08);
+            background:
+                linear-gradient(135deg, rgba(11,18,32,0.78), rgba(15,23,42,0.70));
             margin-bottom: 12px;
         }
-        .fix-title { font-weight: 900; color: #00ff88; }
+        .fix-title { font-weight: 900; color: #22d3ee; }
         .fix-meta { opacity: 0.85; font-size: 0.90rem; }
 
         /* CUSTOM CODEBOX */
         .codebox {
-            background: rgba(6, 12, 9, 0.82);
-            border: 1px solid rgba(0,255,136,0.22);
+            background: rgba(9, 14, 26, 0.88);
+            border: 1px solid rgba(255,255,255,0.08);
             border-radius: 12px;
             padding: 14px 14px;
-            color: rgba(235,255,245,0.94);
+            color: rgba(226,232,240,0.94);
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
             font-size: 0.95rem;
             line-height: 1.45;
             white-space: pre-wrap;
             overflow-wrap: anywhere;
-            box-shadow: 0 0 24px rgba(0,255,136,0.08);
+            box-shadow: 0 0 24px rgba(34,211,238,0.06);
         }
         .codebox .hint {
-            color: rgba(0,255,136,0.95);
+            color: #22d3ee;
             font-weight: 900;
-            text-shadow: 0 0 10px rgba(0,255,136,0.35);
             margin-bottom: 8px;
         }
 
@@ -190,15 +238,15 @@ def apply_matrix_style():
         [data-testid="stCodeBlock"] pre,
         [data-testid="stCodeBlock"] code,
         pre, code {
-            background: rgba(6, 12, 9, 0.82) !important;
-            color: rgba(235,255,245,0.94) !important;
-            border: 1px solid rgba(0,255,136,0.18) !important;
+            background: rgba(9, 14, 26, 0.88) !important;
+            color: rgba(226,232,240,0.94) !important;
+            border: 1px solid rgba(255,255,255,0.08) !important;
             border-radius: 12px !important;
         }
         textarea {
-            background: rgba(6, 12, 9, 0.82) !important;
-            color: rgba(235,255,245,0.94) !important;
-            border: 1px solid rgba(0,255,136,0.18) !important;
+            background: rgba(9, 14, 26, 0.88) !important;
+            color: rgba(226,232,240,0.94) !important;
+            border: 1px solid rgba(255,255,255,0.08) !important;
             border-radius: 12px !important;
         }
         </style>
@@ -206,7 +254,7 @@ def apply_matrix_style():
         unsafe_allow_html=True,
     )
 
-apply_matrix_style()
+apply_premium_style()
 
 # ============================================================
 # UI HELPERS
@@ -479,14 +527,56 @@ def severity_badge(sev: str) -> str:
     if sev == "MEDIUM": return "🟠 MEDIUM"
     return "🟢 LOW"
 
+def severity_rank(sev: str) -> int:
+    sev = (sev or "").upper()
+    if sev == "HIGH":
+        return 0
+    if sev == "MEDIUM":
+        return 1
+    return 2
+
+def summarize_business_impact(findings: list, final_score: int | None = None) -> str:
+    high = sum(1 for f in findings if (f.get("severity") or "").upper() == "HIGH")
+    medium = sum(1 for f in findings if (f.get("severity") or "").upper() == "MEDIUM")
+
+    if not findings:
+        return (
+            "Non emergono criticità evidenti nei controlli eseguiti. Questo non equivale a una sicurezza completa, "
+            "ma indica che i segnali pubblici osservati non mostrano misconfigurazioni immediate."
+        )
+
+    if high >= 2:
+        return (
+            "Il risultato suggerisce priorità concrete da affrontare in tempi brevi. Alcuni aspetti osservabili "
+            "possono incidere su affidabilità, spoofing della posta, esposizione dei servizi o superficie di attacco."
+        )
+    if high == 1 or medium >= 3:
+        return (
+            "Il profilo non è critico in senso assoluto, ma mostra configurazioni che meritano intervento. "
+            "La priorità è ridurre i punti deboli più esposti prima che diventino un problema operativo o reputazionale."
+        )
+    if final_score is not None and final_score >= 70:
+        return (
+            "La situazione di partenza è discreta, ma ci sono margini di hardening e di pulizia configurativa. "
+            "Conviene intervenire ora, quando il lavoro è ancora preventivo e non emergenziale."
+        )
+    return (
+        "Sono presenti alcuni segnali che non indicano necessariamente un incidente, ma suggeriscono una gestione "
+        "migliorabile di configurazioni, protezioni e visibilità pubblica del dominio."
+    )
+
+def top_priorities(findings: list, limit: int = 3) -> list:
+    ordered = sorted(findings, key=lambda x: (severity_rank(x.get("severity")), x.get("title", "")))
+    return ordered[:limit]
+
 def render_remediation(findings: list):
-    st.markdown("## Raccomandazioni & Remediation")
+    st.markdown("## Priorita e remediation")
     if not findings:
         st.success("Ottimo: non risultano misconfigurazioni evidenti nei controlli attivi.")
-        st.info(f"Per un assessment completo, contattami: {CONTACT_MAIL}")
+        st.info(f"Per una verifica piu approfondita o per la remediation, contattami: {CONTACT_MAIL}")
         return
 
-    for f in findings:
+    for f in sorted(findings, key=lambda x: (severity_rank(x.get("severity")), x.get("title", ""))):
         st.markdown(
             f"""
             <div class="fix-card">
@@ -503,11 +593,11 @@ def render_remediation(findings: list):
     st.markdown(
         f"""
         <div class="glass">
-          <div style="font-weight:900; font-size:1.05rem;">📩 Contattami per la remediation</div>
+          <div style="font-weight:900; font-size:1.05rem;">📩 Vuoi trasformare il risultato in un piano di intervento?</div>
           <div class="small">
             • Email: <a href="mailto:{CONTACT_MAIL}">{CONTACT_MAIL}</a><br>
             • Sito: <a href="https://{CONTACT_SITE}" target="_blank">{CONTACT_SITE}</a><br>
-            • Hardening + policy headers + mail security (SPF/DMARC/DKIM) + report per compliance.
+            • Hardening, policy headers, posta aziendale, SPF/DMARC/DKIM, report tecnico e supporto operativo.
           </div>
         </div>
         """,
@@ -518,25 +608,25 @@ def render_remediation(findings: list):
 # SIDEBAR
 # ============================================================
 with st.sidebar:
-    st.markdown("## 🛡️ Security Quick Check Pro")
+    st.markdown("## 🛡️ Cyber Exposure Index")
     try:
         st.image("assets/logo.png", use_container_width=True)
     except Exception:
         pass
 
-    st.markdown("Verifica **passiva / best-effort** su dati pubblici (HTTP / DNS / SSL).")
+    st.markdown("Lettura **best-effort** di alcuni segnali pubblici utili per capire esposizione digitale, configurazioni e priorita di intervento.")
     st.markdown("---")
     st.markdown("### Contatti")
     st.markdown(f"🌐 **Sito:** {CONTACT_SITE}")
     st.markdown(f"📩 **Email:** {CONTACT_MAIL}")
     st.markdown("---")
-    st.markdown("### Note legali")
+    st.markdown("### Note")
     st.markdown(
         "<div class='small'>"
-        "• Controlli basati su info pubbliche.<br>"
-        "• Modalità porte solo con autorizzazione.<br>"
+        "• Analisi basata su dati pubblici.<br>"
         "• Nessun brute-force, accesso o exploit.<br>"
-        "• CVE: indicativo (keyword), confermare su versione reale."
+        "• Modalita porte solo con autorizzazione.<br>"
+        "• CVE: intelligence indicativa, da confermare sulla versione reale."
         "</div>",
         unsafe_allow_html=True,
     )
@@ -562,10 +652,18 @@ if "target_value" not in st.session_state:
 # HEADER
 # ============================================================
 st.markdown(
-    """
-    <div class="glass">
-      <h1 style="margin:0;">Security Quick Check Pro</h1>
-      <div class="small">Analisi su dati pubblici. Nessun test intrusivo. Modalità tecnica solo con autorizzazione.</div>
+    f"""
+    <div class="hero-card">
+      <div class="hero-eyebrow">Cyber Exposure Index</div>
+      <div class="hero-title">Il tuo dominio racconta piu di quanto pensi</div>
+      <div class="hero-sub">
+        Una prima lettura di segnali pubblici, configurazioni esposte e indicatori utili
+        per capire se stai lasciando al caso aspetti che meritano attenzione.
+      </div>
+      <div class="hero-note">
+        Se dopo il clic compare una schermata di standby, premi <b>"Yes, get this app back up!"</b>
+        per riattivare lo strumento. L'app viene mantenuta in pausa quando non e in uso per ridurre i consumi.
+      </div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -578,19 +676,19 @@ st.write("")
 c_in1, c_in2 = st.columns([5, 1])
 with c_in1:
     target_input = st.text_input(
-        "Inserisci Dominio o IP pubblico",
+        "Inserisci dominio o IP pubblico",
         value=st.session_state.target_value,
         placeholder=f"es: {CONTACT_SITE} oppure 1.2.3.4",
     )
 with c_in2:
-    go = st.button("Analizza", use_container_width=True)
+    go = st.button("Avvia l'analisi", use_container_width=True)
 
 if go and target_input:
     st.session_state.analyzed = True
     st.session_state.target_value = target_input.strip()
 
 if not st.session_state.analyzed or not st.session_state.target_value:
-    st.info("Inserisci un dominio/IP e premi **Analizza**.")
+    st.info("Inserisci un dominio o un IP pubblico e premi **Avvia l'analisi**.")
     st.stop()
 
 # ============================================================
@@ -613,7 +711,7 @@ else:
 # ============================================================
 # SUMMARY
 # ============================================================
-st.markdown("### Riepilogo")
+st.markdown("### Riepilogo iniziale")
 sumc1, sumc2 = st.columns(2)
 with sumc1:
     st.markdown('<div class="glass">', unsafe_allow_html=True)
@@ -636,7 +734,7 @@ with sumc2:
 st.write("")
 
 tab_web, tab_email, tab_dns, tab_whois, tab_remed, tab_score = st.tabs(
-    ["🌐 Web", "📧 Email", "🧬 DNS", "📄 WHOIS/RDAP", "🛠️ Fix", "📊 Score"]
+    ["🌐 Web", "📧 Email", "🧬 DNS", "📄 WHOIS/RDAP", "🛠️ Priorita", "📊 Indice"]
 )
 
 # ============================================================
@@ -1032,7 +1130,7 @@ with tab_remed:
 # SCORE TAB (normalizzato)
 # ============================================================
 with tab_score:
-    st.markdown("## Cyber Exposure Index (best-effort)")
+    st.markdown("## Cyber Exposure Index")
 
     WEB_W = 40
     EMAIL_W = 35
@@ -1088,9 +1186,9 @@ with tab_score:
         f"""
         <div class="glass" style="display:flex; gap:22px; align-items:center; justify-content:space-between; flex-wrap:wrap;">
           <div>
-            <div class="small">Punteggio normalizzato sui moduli applicabili</div>
+            <div class="small">Indice normalizzato sui moduli applicabili</div>
             <h2 style="margin:6px 0 0 0;">{final}/100</h2>
-            <div class="small">Non penalizza se il dominio non ha posta/sito (moduli non applicabili).</div>
+            <div class="small">Non penalizza se il dominio non ha posta o sito pubblico: i moduli non applicabili vengono esclusi.</div>
           </div>
           <div class="radar" style="--p: {final}%;"><span>{final}</span></div>
         </div>
@@ -1101,21 +1199,55 @@ with tab_score:
     st.write("")
     c1, c2, c3 = st.columns(3)
     with c1:
-        st.metric("Score grezzo", f"{int(score)}/{weight_total}")
+        st.metric("Indice grezzo", f"{int(score)}/{weight_total}")
     with c2:
-        st.metric("Email applicabile", "Sì" if email_applicable else "No")
+        st.metric("Posta applicabile", "Sì" if email_applicable else "No")
     with c3:
         if final < 40: st.error("Livello: ALTO")
         elif final < 70: st.warning("Livello: MEDIO")
         else: st.success("Livello: BASSO")
 
     st.markdown("---")
-    report = f"""Security Quick Check Pro
+    st.markdown("### Lettura rapida per la tua attivita")
+    st.markdown(
+        f"""
+        <div class="glass">
+          <div style="font-weight:900; font-size:1.05rem; margin-bottom:8px;">Cosa significa questo risultato</div>
+          <div class="small" style="font-size:1rem !important; line-height:1.75 !important;">
+            {summarize_business_impact(findings, final)}
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    priorities = top_priorities(findings, limit=3)
+    if priorities:
+        st.write("")
+        st.markdown("### Priorita consigliate")
+        for idx, item in enumerate(priorities, start=1):
+            sev = severity_badge(item.get("severity"))
+            st.markdown(
+                f"""
+                <div class="fix-card">
+                  <div class="fix-title">{idx}. {escape_html(item.get("title", "Voce"))}</div>
+                  <div class="fix-meta">{sev}</div>
+                  <div style="margin-top:8px;"><b>Perche conta:</b> {escape_html(item.get("why", ""))}</div>
+                  <div style="margin-top:8px;"><b>Primo passo:</b> {escape_html(item.get("fix", ""))}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    st.markdown("---")
+    st.caption("L'indice non misura la sicurezza completa dell'organizzazione: sintetizza solo alcuni segnali pubblici e configurazioni osservabili.")
+
+    report = f"""Cyber Exposure Index
 Target: {host}
 Apex: {root if root else '-'}
 IP: {resolved_ip if resolved_ip else '-'}
 Data: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-Score: {final}/100
+Indice: {final}/100
 
 Findings: {len(findings)}
 CVE mode: {"ON" if cve_mode else "OFF"}
@@ -1128,4 +1260,4 @@ DISCLAIMER:
 - Scansione porte solo con autorizzazione.
 - CVE: indicativo, richiede conferma su versione reale.
 """
-    st.download_button("📥 Scarica report (txt)", report, file_name="security_report.txt")
+    st.download_button("📥 Scarica report (txt)", report, file_name="cyber_exposure_index_report.txt")
